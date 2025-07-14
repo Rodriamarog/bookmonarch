@@ -25,6 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Get initial session
     const getInitialSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
+      console.log('[AuthContext] Initial session:', session)
       setSession(session)
       setUser(session?.user ?? null)
       setLoading(false)
@@ -35,6 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log(`[AuthContext] onAuthStateChange event:`, event, session)
         setSession(session)
         setUser(session?.user ?? null)
         setLoading(false)
@@ -45,34 +47,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const signInWithEmail = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    console.log('[AuthContext] signInWithEmail called', { email })
+    const { error, data } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
-    if (error) throw error
+    if (error) {
+      console.error('[AuthContext] signInWithEmail error:', error)
+      throw error
+    }
+    console.log('[AuthContext] signInWithEmail success:', data)
   }
 
   const signUpWithEmail = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signUp({
+    console.log('[AuthContext] signUpWithEmail called', { email })
+    const { error, data } = await supabase.auth.signUp({
       email,
       password,
     })
-    if (error) throw error
+    if (error) {
+      console.error('[AuthContext] signUpWithEmail error:', error)
+      throw error
+    }
+    console.log('[AuthContext] signUpWithEmail success:', data)
   }
 
   const signInWithGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
+    console.log('[AuthContext] signInWithGoogle called')
+    const { error, data } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
+      // No redirectTo option here; use Supabase dashboard setting
     })
-    if (error) throw error
+    if (error) {
+      console.error('[AuthContext] signInWithGoogle error:', error)
+      throw error
+    }
+    console.log('[AuthContext] signInWithGoogle success:', data)
+    if (data?.url) {
+      window.location.href = data.url
+    }
   }
 
   const signOut = async () => {
+    console.log('[AuthContext] signOut called')
     const { error } = await supabase.auth.signOut()
-    if (error) throw error
+    if (error) {
+      console.error('[AuthContext] signOut error:', error)
+      throw error
+    }
+    setUser(null)
+    setSession(null)
+    console.log('[AuthContext] signOut success, user and session cleared')
+    window.location.href = '/'
   }
 
   const value = {

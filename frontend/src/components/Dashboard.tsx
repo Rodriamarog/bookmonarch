@@ -4,15 +4,17 @@ import React, { useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 
 export default function Dashboard() {
-  const { user, signOut } = useAuth()
+  const { user, signOut, session } = useAuth()
   const [loading, setLoading] = useState(false)
 
   const handleSignOut = async () => {
     setLoading(true)
+    console.log('[Dashboard] handleSignOut called')
     try {
       await signOut()
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
+      console.error('[Dashboard] handleSignOut error:', errorMessage)
       alert(errorMessage)
     } finally {
       setLoading(false)

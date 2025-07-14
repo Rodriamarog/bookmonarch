@@ -1,8 +1,12 @@
 'use client'
 
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 export default function AuthCodeError() {
+  const searchParams = useSearchParams()
+  const error = searchParams.get('error')
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-indigo-50">
       <div className="max-w-md w-full space-y-8 p-8">
@@ -22,6 +26,11 @@ export default function AuthCodeError() {
             <p className="text-gray-600 mb-6">
               There was an issue with the authentication process. Please try signing in again.
             </p>
+            {error && (
+              <div className="mb-6 p-3 bg-red-50 text-red-700 rounded-xl text-sm break-words">
+                <span className="font-semibold">Error:</span> {decodeURIComponent(error)}
+              </div>
+            )}
             <Link
               href="/"
               className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-medium hover:from-purple-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-all"

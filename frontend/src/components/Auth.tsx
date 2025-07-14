@@ -9,12 +9,12 @@ export default function Auth() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [authLoading, setAuthLoading] = useState(false)
-  const { signInWithEmail, signUpWithEmail, signInWithGoogle } = useAuth()
+  const { signInWithEmail, signUpWithEmail, signInWithGoogle, session, user } = useAuth()
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    
+    console.log('[Auth] handleEmailAuth', { isSignUp, email })
     try {
       if (isSignUp) {
         await signUpWithEmail(email, password)
@@ -25,6 +25,7 @@ export default function Auth() {
       }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
+      console.error('[Auth] handleEmailAuth error:', errorMessage)
       alert(errorMessage)
     } finally {
       setLoading(false)
@@ -33,10 +34,12 @@ export default function Auth() {
 
   const handleGoogleAuth = async () => {
     setAuthLoading(true)
+    console.log('[Auth] handleGoogleAuth')
     try {
       await signInWithGoogle()
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
+      console.error('[Auth] handleGoogleAuth error:', errorMessage)
       alert(errorMessage)
       setAuthLoading(false)
     }
@@ -49,7 +52,6 @@ export default function Auth() {
           <h1 className="text-4xl font-bold text-gray-900 mb-2">BookMonarch</h1>
           <p className="text-gray-600">AI Book Generation Service</p>
         </div>
-        
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-semibold text-gray-900">
