@@ -115,6 +115,7 @@ temp/
 *.njsproj
 *.sln
 *.sw?
+.kiro
 
 # Supabase
 .supabase/
