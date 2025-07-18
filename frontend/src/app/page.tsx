@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/Button"
 import { SignInModal } from "@/components/auth/SignInModal"
+import { SubscriptionButton } from "@/components/subscription/SubscriptionButton"
 import { useAuthContext } from "@/contexts/AuthContext"
 import { Crown, BookOpen, Settings, User } from "lucide-react"
 
@@ -189,24 +190,9 @@ export default function BookMonarchDashboard() {
               Generate Book
             </button>
 
-            {/* Info Text */}
+            {/* Subscription Info */}
             <div className="text-center">
-              <p className="text-sm" style={{ color: "#4B5563" }}>
-                {!user ? (
-                  <>Get 1 free book generation • <button 
-                    onClick={() => setShowSignInModal(true)}
-                    className="text-orange-600 hover:text-orange-700 underline"
-                  >
-                    Sign up for unlimited
-                  </button></>
-                ) : profile?.subscription_status === 'free' ? (
-                  <>Free plan: 1 book per account • <button className="text-orange-600 hover:text-orange-700 underline">
-                    Upgrade for 10/day
-                  </button></>
-                ) : (
-                  "Pro plan: Generate up to 10 books per day"
-                )}
-              </p>
+              <SubscriptionButton />
             </div>
           </div>
         </div>
