@@ -24,7 +24,11 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             boxShadow: '6px 6px 0px 0px rgba(0, 0, 0, 1)',
             background: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
             borderColor: '#000000',
-            fontWeight: '700'
+            fontWeight: '700',
+            // Fix anti-aliasing issues
+            outline: '1px solid transparent',
+            backfaceVisibility: 'hidden',
+            WebkitFontSmoothing: 'antialiased'
           }
         case 'secondary':
           return {
@@ -32,7 +36,11 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             color: '#111827',
             borderColor: '#000000',
             boxShadow: '4px 4px 0px 0px rgba(0, 0, 0, 1)',
-            fontWeight: '600'
+            fontWeight: '600',
+            // Fix anti-aliasing issues
+            outline: '1px solid transparent',
+            backfaceVisibility: 'hidden',
+            WebkitFontSmoothing: 'antialiased'
           }
         default:
           return {}

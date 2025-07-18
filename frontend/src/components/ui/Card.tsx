@@ -30,12 +30,20 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
             boxShadow: '8px 8px 0px 0px rgba(0, 0, 0, 1)',
             background: 'linear-gradient(135deg, #FFEEDB 0%, #FFE4C4 100%)',
             transform: 'perspective(1000px) rotateX(1deg)',
+            // Fix anti-aliasing issues
+            outline: '1px solid transparent',
+            backfaceVisibility: 'hidden',
+            WebkitFontSmoothing: 'antialiased',
             ...style
           }
         default:
           return {
             boxShadow: '4px 4px 0px 0px rgba(0, 0, 0, 1)',
             backgroundColor: '#FFFBF5',
+            // Fix anti-aliasing issues
+            outline: '1px solid transparent',
+            backfaceVisibility: 'hidden',
+            WebkitFontSmoothing: 'antialiased',
             ...style
           }
       }

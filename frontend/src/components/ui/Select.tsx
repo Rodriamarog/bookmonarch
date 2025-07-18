@@ -27,6 +27,10 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
         backgroundRepeat: 'no-repeat',
         backgroundSize: '1.5em 1.5em',
         paddingRight: '3rem',
+        // Fix anti-aliasing issues
+        outline: '1px solid transparent',
+        backfaceVisibility: 'hidden',
+        WebkitFontSmoothing: 'antialiased',
         ...style
       }
 

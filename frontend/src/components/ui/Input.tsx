@@ -21,6 +21,10 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
         boxShadow: '4px 4px 0px 0px rgba(0, 0, 0, 1)',
         fontWeight: '600',
+        // Fix anti-aliasing issues
+        outline: '1px solid transparent',
+        backfaceVisibility: 'hidden',
+        WebkitFontSmoothing: 'antialiased',
         ...style
       }
 
