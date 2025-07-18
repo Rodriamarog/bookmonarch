@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Button } from "@/components/ui/Button"
+import { Button, Card, Input, Select, Label, AccentStar, AccentDiamond, AccentCircle } from "@/components/ui"
 import { SignInModal } from "@/components/auth/SignInModal"
 import { SubscriptionButton } from "@/components/subscription/SubscriptionButton"
 import { useAuthContext } from "@/contexts/AuthContext"
@@ -97,105 +97,70 @@ export default function BookMonarchDashboard() {
           </p>
         </div>
 
+        {/* Decorative Elements */}
+        <AccentStar size="sm" color="coral" className="absolute top-20 left-20 opacity-60" />
+        <AccentDiamond size="md" color="mint" className="absolute top-32 right-32 opacity-60" />
+        <AccentStar size="lg" color="red" className="absolute bottom-40 right-20 opacity-60" />
+        <AccentCircle size="md" color="green" className="absolute bottom-20 left-40 opacity-60" />
+
         {/* Book Generation Form */}
-        <div
-          className="w-full max-w-2xl mx-auto p-8 rounded-2xl border-2 relative"
-          style={{
-            backgroundColor: "#FFEEDB",
-            borderColor: "#1F2937",
-            boxShadow: `0 25px 50px -12px rgba(0, 0, 0, 0.25),
-                        0 0 0 1px rgba(255, 255, 255, 0.05),
-                        inset 0 1px 0 rgba(255, 255, 255, 0.1)`,
-            background: `linear-gradient(135deg, #FFEEDB 0%, #FFE4C4 100%)`,
-          }}
-        >
+        <Card variant="elevated" className="w-full max-w-2xl mx-auto relative">
           <div className="space-y-6">
             {/* Book Title */}
             <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: "#1F2937" }}>
-                Book Title *
-              </label>
-              <input
+              <Label required>Book Title</Label>
+              <Input
                 type="text"
                 placeholder="e.g., The Ultimate Guide to Productivity"
                 value={bookTitle}
                 onChange={(e) => setBookTitle(e.target.value)}
-                className="w-full text-base px-4 py-3 rounded-lg border-2 transition-all duration-200"
-                style={{
-                  backgroundColor: "#FFFFFF",
-                  borderColor: "#4B5563",
-                  fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-                  boxShadow: `inset 0 2px 4px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05)`,
-                }}
+                inputSize="lg"
               />
             </div>
 
             {/* Author Name */}
             <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: "#1F2937" }}>
-                Author Name *
-              </label>
-              <input
+              <Label required>Author Name</Label>
+              <Input
                 type="text"
                 placeholder="e.g., John Smith"
                 value={authorName}
                 onChange={(e) => setAuthorName(e.target.value)}
-                className="w-full text-base px-4 py-3 rounded-lg border-2 transition-all duration-200"
-                style={{
-                  backgroundColor: "#FFFFFF",
-                  borderColor: "#4B5563",
-                  fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-                  boxShadow: `inset 0 2px 4px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05)`,
-                }}
+                inputSize="lg"
               />
             </div>
 
             {/* Genre */}
             <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: "#1F2937" }}>
-                Genre (Optional)
-              </label>
-              <select
+              <Label>Genre (Optional)</Label>
+              <Select
                 value={genre}
                 onChange={(e) => setGenre(e.target.value)}
-                className="w-full text-base px-4 py-3 rounded-lg border-2 transition-all duration-200"
-                style={{
-                  backgroundColor: "#FFFFFF",
-                  borderColor: "#4B5563",
-                  fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-                  boxShadow: `inset 0 2px 4px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05)`,
-                }}
+                selectSize="lg"
               >
                 <option value="">Select a genre (AI will choose if left blank)</option>
                 {genres.map((g) => (
                   <option key={g} value={g}>{g}</option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             {/* Generate Button */}
-            <button
+            <Button
               onClick={handleGenerateBook}
-              className="w-full px-6 py-4 rounded-lg font-medium text-lg border-none relative overflow-hidden transition-all duration-200 hover:scale-105 hover:shadow-lg active:scale-95"
-              style={{
-                backgroundColor: "#D97706",
-                color: "#FFFFFF",
-                boxShadow: `0 4px 8px rgba(217, 119, 6, 0.3),
-                           0 1px 3px rgba(0, 0, 0, 0.2),
-                           inset 0 1px 0 rgba(255, 255, 255, 0.2)`,
-                background: `linear-gradient(135deg, #D97706 0%, #B45309 100%)`,
-              }}
+              className="w-full"
+              size="lg"
             >
               <BookOpen className="inline-block w-5 h-5 mr-2" />
               Generate Book
-            </button>
+            </Button>
 
             {/* Subscription Info */}
             <div className="text-center">
               <SubscriptionButton />
             </div>
           </div>
-        </div>
+        </Card>
 
         {/* Recent Books Section (placeholder) */}
         {user && (

@@ -7,12 +7,12 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className = '', variant = 'primary', size = 'md', style, ...props }, ref) => {
-    const baseClasses = 'inline-flex items-center justify-center rounded-lg font-medium transition-all duration-200 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50'
+    const baseClasses = 'inline-flex items-center justify-center rounded-lg font-bold transition-all duration-200 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border-4 border-black active:translate-x-1 active:translate-y-1 active:shadow-none'
     
     const sizeClasses = {
-      sm: 'h-9 px-4 py-2 text-sm',
-      md: 'h-11 px-6 py-3',
-      lg: 'h-12 px-8 py-4 text-lg'
+      sm: 'px-5 py-3 text-sm',
+      md: 'px-7 py-4 text-base',
+      lg: 'px-9 py-5 text-lg'
     }
 
     const getVariantStyle = () => {
@@ -21,16 +21,18 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           return {
             backgroundColor: '#D97706',
             color: '#FFFFFF',
-            boxShadow: '0 4px 8px rgba(217, 119, 6, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+            boxShadow: '6px 6px 0px 0px rgba(0, 0, 0, 1)',
             background: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
-            border: 'none'
+            borderColor: '#000000',
+            fontWeight: '700'
           }
         case 'secondary':
           return {
             backgroundColor: '#F9FAFB',
             color: '#111827',
-            border: '1px solid #D1D5DB',
-            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.5)'
+            borderColor: '#000000',
+            boxShadow: '4px 4px 0px 0px rgba(0, 0, 0, 1)',
+            fontWeight: '600'
           }
         default:
           return {}
