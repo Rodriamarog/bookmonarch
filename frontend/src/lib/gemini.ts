@@ -7,9 +7,9 @@ if (!process.env.GOOGLE_GEMINI_API_KEY) {
 // Initialize the Google Generative AI client
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY)
 
-// Get the Gemini 2.0 Flash model
+// Get the Gemini 2.5 Flash model (we'll optimize rate limits with proper delays)
 export const geminiModel = genAI.getGenerativeModel({ 
-  model: "gemini-2.0-flash-exp",
+  model: "gemini-2.5-flash-lite-preview-06-17",
   generationConfig: {
     temperature: 0.7,
     topP: 0.8,
@@ -26,6 +26,7 @@ export interface BookOutline {
   plotSummary: string
   writingStyleGuide: string
   chapterTitles: string[]
+  chapterSummaries: string[]
   targetWordCount: number
 }
 
@@ -90,6 +91,11 @@ RESPONSE FORMAT (JSON):
     "Chapter 2 title",
     ...15 titles total
   ],
+  "chapterSummaries": [
+    "Brief 2-3 sentence summary of what happens in Chapter 1",
+    "Brief 2-3 sentence summary of what happens in Chapter 2",
+    ...15 summaries total
+  ],
   "targetWordCount": 15000
 }
 
@@ -102,6 +108,7 @@ export function createChapterPrompt(
   previousChaptersSummary: string = ""
 ): string {
   const chapterTitle = outline.chapterTitles[chapterNumber - 1]
+  const chapterSummary = outline.chapterSummaries[chapterNumber - 1]
   
   return `You are a professional ${outline.genre.toLowerCase()} writer. Write Chapter ${chapterNumber} of the book "${outline.title}" by ${outline.author}.
 
@@ -113,8 +120,9 @@ BOOK CONTEXT:
 - Writing Style Guide: ${outline.writingStyleGuide}
 
 CHAPTER DETAILS:
-- Chapter Number: ${chapterNumber}
+- Chapter Number: ${chapterNumber} of 15
 - Chapter Title: ${chapterTitle}
+- Chapter Summary: ${chapterSummary}
 - Target Word Count: 800-1200 words
 
 ${previousChaptersSummary ? `PREVIOUS CHAPTERS SUMMARY:
@@ -125,6 +133,7 @@ Ensure this chapter builds naturally on the previous content and maintains narra
 REQUIREMENTS:
 - Write engaging, high-quality content appropriate for the ${outline.genre.toLowerCase()} genre
 - Follow the established writing style and tone
+- Ensure the chapter covers the content described in the chapter summary
 - Ensure the chapter is substantial (800-1200 words)
 - Create a natural flow that connects to the overall book structure
 - End with a smooth transition that leads to the next chapter

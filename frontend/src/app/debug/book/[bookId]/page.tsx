@@ -14,6 +14,8 @@ interface BookData {
   progress: number
   plotSummary?: string
   chapterTitles?: string[]
+  chapterSummaries?: string[]
+  contentUrl?: string
   currentStage: string
   createdAt: string
 }
@@ -128,33 +130,89 @@ export default function BookDebugPage() {
           </Card>
         )}
 
-        {/* Chapter Titles */}
+        {/* Chapter Outline */}
         {bookData.chapterTitles && bookData.chapterTitles.length > 0 && (
           <Card className="p-6">
             <h2 className="text-2xl font-bold mb-4" style={{ color: "#111827" }}>
-              Chapter Titles ({bookData.chapterTitles.length} chapters)
+              Chapter Outline ({bookData.chapterTitles.length} chapters)
             </h2>
-            <div className="grid gap-3">
+            <div className="grid gap-4">
               {bookData.chapterTitles.map((title, index) => (
                 <div 
                   key={index}
-                  className="flex items-center p-3 rounded-lg border"
+                  className="p-4 rounded-lg border"
                   style={{ backgroundColor: "#F9FAFB", borderColor: "#E5E7EB" }}
                 >
-                  <div 
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold mr-3"
-                    style={{ backgroundColor: "#FF6B6B", color: "white" }}
-                  >
-                    {index + 1}
-                  </div>
-                  <div style={{ color: "#111827" }}>
-                    {title}
+                  <div className="flex items-start gap-3">
+                    <div 
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-1"
+                      style={{ backgroundColor: "#FF6B6B", color: "white" }}
+                    >
+                      {index + 1}
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold mb-2" style={{ color: "#111827" }}>
+                        {title}
+                      </h3>
+                      {bookData.chapterSummaries && bookData.chapterSummaries[index] && (
+                        <p className="text-sm" style={{ color: "#4B5563", lineHeight: "1.5" }}>
+                          {bookData.chapterSummaries[index]}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
           </Card>
         )}
+
+        {/* Chapter Content */}
+        {bookData.contentUrl && (() => {
+          try {
+            const chapterContents = JSON.parse(bookData.contentUrl)
+            const chapterNumbers = Object.keys(chapterContents).map(Number).sort((a, b) => a - b)
+            
+            if (chapterNumbers.length > 0) {
+              return (
+                <Card className="p-6">
+                  <h2 className="text-2xl font-bold mb-4" style={{ color: "#111827" }}>
+                    Generated Chapters ({chapterNumbers.length} of 15)
+                  </h2>
+                  <div className="space-y-6">
+                    {chapterNumbers.map((chapterNum) => (
+                      <div key={chapterNum} className="border-l-4 border-blue-500 pl-4">
+                        <h3 className="text-lg font-bold mb-2" style={{ color: "#111827" }}>
+                          Chapter {chapterNum}: {bookData.chapterTitles?.[chapterNum - 1] || 'Untitled'}
+                        </h3>
+                        <div 
+                          className="prose max-w-none text-sm p-4 rounded-lg"
+                          style={{ backgroundColor: "#F9FAFB", color: "#374151", lineHeight: "1.6" }}
+                        >
+                          <div className="whitespace-pre-wrap">
+                            {chapterContents[chapterNum].length > 1000 
+                              ? `${chapterContents[chapterNum].substring(0, 1000)}...` 
+                              : chapterContents[chapterNum]
+                            }
+                          </div>
+                          {chapterContents[chapterNum].length > 1000 && (
+                            <div className="mt-2 text-xs text-gray-500">
+                              Showing first 1000 characters of {chapterContents[chapterNum].length} total
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )
+            }
+          } catch (e) {
+            // If contentUrl is not JSON, it might be a regular URL
+            return null
+          }
+          return null
+        })()}
 
         {/* Debug Info */}
         <Card className="p-6">

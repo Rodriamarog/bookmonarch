@@ -165,7 +165,7 @@ export function RecentBooks({ userId }: RecentBooksProps) {
               </div>
 
               <div className="flex items-center gap-2">
-                {(book.status === 'outline_complete' || book.status === 'completed') && (
+                {(book.status === 'outline_complete' || book.status === 'chapters_complete' || book.status === 'completed') && (
                   <Button
                     size="sm"
                     variant="outline"

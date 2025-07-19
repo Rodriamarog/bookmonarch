@@ -94,17 +94,32 @@ export async function GET(
       currentStage = `Generation failed: ${book.error_message || 'Unknown error'}`
     } else if (book.status === 'completed') {
       currentStage = 'Book generation complete!'
+    } else if (book.status === 'chapters_complete') {
+      currentStage = 'All chapters generated! Finalizing book...'
     } else if (book.status === 'outline_complete') {
-      currentStage = 'Book outline complete. Full generation coming soon!'
-    } else if (book.progress >= 10) {
+      currentStage = 'Book outline complete. Starting chapter generation...'
+    } else if (book.progress <= 10) {
       currentStage = 'Generating book outline...'
-    } else if (book.progress >= 20) {
-      currentStage = 'Starting chapter generation...'
-    } else if (book.progress >= 90) {
+    } else if (book.progress >= 80) {
       currentStage = 'Finalizing book content...'
-    } else if (book.progress > 20) {
-      const currentChapter = Math.floor(((book.progress - 20) / 70) * 15) + 1
+    } else if (book.progress > 10) {
+      const currentChapter = Math.floor(((book.progress - 10) / 70) * 15) + 1
       currentStage = `Writing chapter ${currentChapter} of 15...`
+    }
+
+    // Parse writing style to extract chapter summaries if available
+    let writingStyle = book.writing_style
+    let chapterSummaries: string[] | undefined
+    
+    try {
+      if (book.writing_style && book.writing_style.startsWith('{')) {
+        const parsedStyle = JSON.parse(book.writing_style)
+        writingStyle = parsedStyle.style
+        chapterSummaries = parsedStyle.chapterSummaries
+      }
+    } catch (e) {
+      // If parsing fails, use the original writing_style as-is
+      writingStyle = book.writing_style
     }
 
     const response = {
@@ -112,7 +127,7 @@ export async function GET(
       title: book.title,
       author: book.author_name,
       genre: book.genre,
-      writingStyle: book.writing_style,
+      writingStyle: writingStyle,
       status: book.status,
       progress: book.progress || 0,
       totalChapters: book.total_chapters || 15,
@@ -121,6 +136,7 @@ export async function GET(
       createdAt: book.created_at,
       plotSummary: book.plot_summary,
       chapterTitles: book.chapter_titles,
+      chapterSummaries: chapterSummaries,
       contentUrl: book.content_url,
       isAnonymous: book.is_anonymous,
       expiresAt: book.expires_at,

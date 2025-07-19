@@ -5,6 +5,8 @@ import {
   BookGenerationRequest, 
   BookOutline, 
   createOutlinePrompt,
+  createChapterPrompt,
+  delay,
   GeminiAPIError 
 } from '@/lib/gemini'
 
@@ -224,12 +226,18 @@ async function generateBookAsync(bookId: string, request: BookGenerationRequest)
         const plotMatch = outlineText.match(/"plotSummary":\s*"([^"]+)"/);
         const styleMatch = outlineText.match(/"writingStyleGuide":\s*"([^"]+)"/);
         const chaptersMatch = outlineText.match(/"chapterTitles":\s*\[(.*?)\]/s);
+        const summariesMatch = outlineText.match(/"chapterSummaries":\s*\[(.*?)\]/s);
         
-        if (titleMatch && authorMatch && genreMatch && plotMatch && styleMatch && chaptersMatch) {
+        if (titleMatch && authorMatch && genreMatch && plotMatch && styleMatch && chaptersMatch && summariesMatch) {
           const chapterTitles = chaptersMatch[1]
             .split(',')
             .map(title => title.trim().replace(/^"|"$/g, ''))
             .filter(title => title.length > 0);
+          
+          const chapterSummaries = summariesMatch[1]
+            .split(',')
+            .map(summary => summary.trim().replace(/^"|"$/g, ''))
+            .filter(summary => summary.length > 0);
           
           outline = {
             title: titleMatch[1],
@@ -238,6 +246,7 @@ async function generateBookAsync(bookId: string, request: BookGenerationRequest)
             plotSummary: plotMatch[1],
             writingStyleGuide: styleMatch[1],
             chapterTitles: chapterTitles,
+            chapterSummaries: chapterSummaries,
             targetWordCount: 15000
           };
           
@@ -261,6 +270,15 @@ async function generateBookAsync(bookId: string, request: BookGenerationRequest)
       throw new GeminiAPIError(`Invalid outline: must contain exactly 15 chapter titles, got ${outline.chapterTitles?.length || 0}`)
     }
 
+    if (!outline.chapterSummaries || outline.chapterSummaries.length !== 15) {
+      console.error('Invalid outline structure:', {
+        hasChapterSummaries: !!outline.chapterSummaries,
+        summaryCount: outline.chapterSummaries?.length || 0,
+        outline: outline
+      })
+      throw new GeminiAPIError(`Invalid outline: must contain exactly 15 chapter summaries, got ${outline.chapterSummaries?.length || 0}`)
+    }
+
     // Additional validation
     if (!outline.plotSummary || !outline.writingStyleGuide) {
       throw new GeminiAPIError('Invalid outline: missing plot summary or writing style guide')
@@ -274,6 +292,11 @@ async function generateBookAsync(bookId: string, request: BookGenerationRequest)
       .update({
         plot_summary: outline.plotSummary,
         chapter_titles: outline.chapterTitles,
+        // Store chapter summaries in the writing_style field temporarily (we can add a proper field later)
+        writing_style: JSON.stringify({
+          style: outline.writingStyleGuide,
+          chapterSummaries: outline.chapterSummaries
+        }),
         progress: 10
       })
       .eq('id', bookId)
@@ -286,16 +309,77 @@ async function generateBookAsync(bookId: string, request: BookGenerationRequest)
     await updateBookProgress(bookId, 'Outline complete. Starting chapter generation...', 10)
     console.log(`Outline generation completed successfully for book ${bookId}`)
 
-    // This is where we'll implement chapter generation in subtasks 7.1, 7.2, 7.3
-    // For now, we'll mark the outline generation as complete
-    await updateBookProgress(bookId, 'Book outline generated successfully. Chapter generation will be implemented in the next phase.', 15)
-
-    // Update status to indicate outline is complete but full generation is pending
+    // TASK 7.2: Generate chapters iteratively
+    console.log(`Starting chapter generation for book ${bookId}`)
+    
+    const chapterContents: { [key: number]: string } = {}
+    const progressPerChapter = 70 / 15 // 70% of progress for 15 chapters (10% for outline, 20% for finalization)
+    
+    for (let chapterNumber = 1; chapterNumber <= 15; chapterNumber++) {
+      try {
+        console.log(`Generating chapter ${chapterNumber} of 15 for book ${bookId}`)
+        
+        // Update progress for current chapter
+        const currentProgress = 10 + (chapterNumber - 1) * progressPerChapter
+        await updateBookProgress(bookId, `Writing chapter ${chapterNumber} of 15...`, currentProgress)
+        
+        // Create context from previous chapters using outline summaries
+        const previousChaptersSummary = chapterNumber > 1 
+          ? `Previous chapters summary:\n${outline.chapterSummaries.slice(0, chapterNumber - 1).map((summary, index) => `Chapter ${index + 1}: ${summary}`).join('\n\n')}`
+          : ''
+        
+        // Generate chapter content
+        const chapterPrompt = createChapterPrompt(outline, chapterNumber, previousChaptersSummary)
+        console.log(`Sending chapter ${chapterNumber} prompt to Gemini API...`)
+        
+        const chapterResult = await geminiModel.generateContent(chapterPrompt)
+        const chapterContent = chapterResult.response.text().trim()
+        
+        console.log(`Received chapter ${chapterNumber} content (${chapterContent.length} characters)`)
+        
+        // Validate chapter content
+        if (!chapterContent || chapterContent.length < 500) {
+          throw new Error(`Chapter ${chapterNumber} content too short: ${chapterContent.length} characters`)
+        }
+        
+        // Store chapter content
+        chapterContents[chapterNumber] = chapterContent
+        
+        console.log(`Chapter ${chapterNumber} generated successfully (${chapterContent.length} chars)`)
+        
+        // Update database with current progress and chapter content
+        await supabase
+          .from('books')
+          .update({
+            progress: currentProgress,
+            // Store chapters as JSON for now - in production, use Supabase Storage
+            content_url: JSON.stringify(chapterContents)
+          })
+          .eq('id', bookId)
+        
+        // Add delay to respect 15 RPM rate limit (4 seconds between requests)
+        await delay(4000)
+        
+      } catch (chapterError) {
+        console.error(`Error generating chapter ${chapterNumber}:`, chapterError)
+        
+        // For now, we'll continue with other chapters rather than failing completely
+        // In production, you might want to implement retry logic
+        chapterContents[chapterNumber] = `[Chapter ${chapterNumber} generation failed: ${chapterError instanceof Error ? chapterError.message : 'Unknown error'}]`
+      }
+    }
+    
+    console.log(`Chapter generation completed for book ${bookId}`)
+    
+    // Update progress to indicate chapters are complete
+    await updateBookProgress(bookId, 'All chapters generated. Finalizing book...', 80)
+    
+    // Update status to indicate chapters are complete
     await supabase
       .from('books')
       .update({
-        status: 'outline_complete',
-        progress: 15
+        status: 'chapters_complete',
+        progress: 80
       })
       .eq('id', bookId)
 
