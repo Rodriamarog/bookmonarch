@@ -11,9 +11,14 @@ import { Crown, BookOpen, Settings, User } from "lucide-react"
 export default function BookMonarchDashboard() {
   const [bookTitle, setBookTitle] = useState("")
   const [authorName, setAuthorName] = useState("")
-  const [genre, setGenre] = useState("")
+  const [bookType, setBookType] = useState("Non-fiction")
+  const [writingStyle, setWritingStyle] = useState("")
   const [showSignInModal, setShowSignInModal] = useState(false)
   const [notification, setNotification] = useState<string | null>(null)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generationProgress, setGenerationProgress] = useState(0)
+  const [generationStage, setGenerationStage] = useState("")
+  const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({})
   const { user, profile, loading, signOut } = useAuthContext()
 
   // Handle URL parameters for success/cancel notifications
@@ -43,14 +48,129 @@ export default function BookMonarchDashboard() {
     await signOut()
   }
 
-  const handleGenerateBook = () => {
-    if (!bookTitle.trim() || !authorName.trim()) {
-      alert("Please enter both book title and author name")
+  const validateForm = () => {
+    const errors: {[key: string]: string} = {}
+    
+    if (!bookTitle.trim()) {
+      errors.bookTitle = "Book title is required"
+    }
+    
+    if (!authorName.trim()) {
+      errors.authorName = "Author name is required"
+    }
+    
+    if (!bookType) {
+      errors.bookType = "Book type is required"
+    }
+    
+    setValidationErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const handleGenerateBook = async () => {
+    if (!validateForm()) {
       return
     }
     
-    // TODO: Implement book generation logic
-    console.log("Generating book:", { bookTitle, authorName, genre })
+    setIsGenerating(true)
+    setGenerationProgress(0)
+    setGenerationStage("Initializing book generation...")
+    
+    try {
+      // Call the generate-book API
+      const response = await fetch('/api/generate-book', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: bookTitle,
+          author: authorName,
+          bookType: bookType,
+          writingStyle: writingStyle || undefined,
+          userId: user?.id
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        if (result.limitReached) {
+          alert(result.error)
+          return
+        }
+        throw new Error(result.error || 'Failed to start book generation')
+      }
+
+      const { bookId, accessToken } = result
+      
+      // Start polling for progress
+      await pollBookProgress(bookId, user?.id, accessToken)
+      
+    } catch (error) {
+      console.error("Book generation failed:", error)
+      setGenerationStage("Generation failed")
+      alert(error instanceof Error ? error.message : "Book generation failed. Please try again.")
+    } finally {
+      setIsGenerating(false)
+      setGenerationProgress(0)
+      setGenerationStage("")
+    }
+  }
+
+  const pollBookProgress = async (bookId: string, userId?: string, accessToken?: string) => {
+    const maxPollingTime = 30 * 60 * 1000 // 30 minutes max
+    const pollingInterval = 2000 // 2 seconds
+    const startTime = Date.now()
+
+    const poll = async () => {
+      try {
+        const params = new URLSearchParams()
+        if (userId) params.append('userId', userId)
+        if (accessToken) params.append('accessToken', accessToken)
+
+        const response = await fetch(`/api/book-status/${bookId}?${params}`)
+        const bookStatus = await response.json()
+
+        if (!response.ok) {
+          throw new Error(bookStatus.error || 'Failed to fetch book status')
+        }
+
+        // Update progress
+        setGenerationProgress(bookStatus.progress || 0)
+        setGenerationStage(bookStatus.currentStage || 'Processing...')
+
+        // Check if generation is complete
+        if (bookStatus.status === 'completed') {
+          setGenerationStage("Book generation complete!")
+          setNotification('🎉 Your book has been generated successfully! Check your library to download it.')
+          return
+        }
+
+        // Check if generation failed
+        if (bookStatus.status === 'failed') {
+          throw new Error(bookStatus.errorMessage || 'Book generation failed')
+        }
+
+        // Check if we should continue polling
+        if (Date.now() - startTime < maxPollingTime && 
+            (bookStatus.status === 'generating' || bookStatus.status === 'outline_complete')) {
+          setTimeout(poll, pollingInterval)
+        } else if (bookStatus.status === 'outline_complete') {
+          setGenerationStage("Book outline complete! Full chapter generation will be available soon.")
+          setNotification('📝 Book outline generated successfully! Full chapter generation coming in the next update.')
+        } else {
+          throw new Error('Book generation timed out')
+        }
+
+      } catch (error) {
+        console.error('Polling error:', error)
+        setGenerationStage("Generation failed")
+        throw error
+      }
+    }
+
+    await poll()
   }
 
   const genres = [
@@ -161,9 +281,18 @@ export default function BookMonarchDashboard() {
                 type="text"
                 placeholder="e.g., The Ultimate Guide to Productivity"
                 value={bookTitle}
-                onChange={(e) => setBookTitle(e.target.value)}
+                onChange={(e) => {
+                  setBookTitle(e.target.value)
+                  if (validationErrors.bookTitle) {
+                    setValidationErrors(prev => ({ ...prev, bookTitle: "" }))
+                  }
+                }}
                 inputSize="lg"
+                className={validationErrors.bookTitle ? "border-red-500" : ""}
               />
+              {validationErrors.bookTitle && (
+                <p className="text-sm mt-1 text-red-600">{validationErrors.bookTitle}</p>
+              )}
             </div>
 
             {/* Author Name */}
@@ -173,34 +302,103 @@ export default function BookMonarchDashboard() {
                 type="text"
                 placeholder="e.g., John Smith"
                 value={authorName}
-                onChange={(e) => setAuthorName(e.target.value)}
+                onChange={(e) => {
+                  setAuthorName(e.target.value)
+                  if (validationErrors.authorName) {
+                    setValidationErrors(prev => ({ ...prev, authorName: "" }))
+                  }
+                }}
                 inputSize="lg"
+                className={validationErrors.authorName ? "border-red-500" : ""}
               />
+              {validationErrors.authorName && (
+                <p className="text-sm mt-1 text-red-600">{validationErrors.authorName}</p>
+              )}
             </div>
 
-            {/* Genre */}
+            {/* Book Type */}
             <div>
-              <Label>Genre (Optional)</Label>
+              <Label required>Book Type</Label>
               <Select
-                value={genre}
-                onChange={(e) => setGenre(e.target.value)}
+                value={bookType}
+                onChange={(e) => {
+                  setBookType(e.target.value)
+                  if (validationErrors.bookType) {
+                    setValidationErrors(prev => ({ ...prev, bookType: "" }))
+                  }
+                }}
                 selectSize="lg"
+                className={validationErrors.bookType ? "border-red-500" : ""}
               >
-                <option value="">Select a genre (AI will choose if left blank)</option>
-                {genres.map((g) => (
-                  <option key={g} value={g}>{g}</option>
-                ))}
+                <option value="Non-fiction">Non-fiction</option>
+                <option value="Fiction" disabled>Fiction (Coming Soon)</option>
+                <option value="Cookbook" disabled>Cookbook (Coming Soon)</option>
+                <option value="Biography" disabled>Biography (Coming Soon)</option>
+                <option value="Self-Help" disabled>Self-Help (Coming Soon)</option>
               </Select>
+              {validationErrors.bookType && (
+                <p className="text-sm mt-1 text-red-600">{validationErrors.bookType}</p>
+              )}
             </div>
+
+            {/* Writing Style */}
+            <div>
+              <Label>Writing Style (Optional)</Label>
+              <Input
+                type="text"
+                placeholder="e.g., Conversational and practical, Academic and detailed, Simple and beginner-friendly"
+                value={writingStyle}
+                onChange={(e) => setWritingStyle(e.target.value)}
+                inputSize="lg"
+              />
+              <p className="text-sm mt-2" style={{ color: "#4B5563" }}>
+                Describe the tone and approach you'd like for your book. Leave blank for AI to decide.
+              </p>
+            </div>
+
+            {/* Progress Indicator */}
+            {isGenerating && (
+              <div className="space-y-4">
+                <div className="text-center">
+                  <p className="text-sm font-medium" style={{ color: "#111827" }}>
+                    {generationStage}
+                  </p>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-3">
+                  <div 
+                    className="h-3 rounded-full transition-all duration-500 ease-out"
+                    style={{ 
+                      width: `${generationProgress}%`,
+                      backgroundColor: "#FF6B6B"
+                    }}
+                  />
+                </div>
+                <div className="text-center">
+                  <p className="text-xs" style={{ color: "#4B5563" }}>
+                    {Math.round(generationProgress)}% complete
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Generate Button */}
             <Button
               onClick={handleGenerateBook}
               className="w-full"
               size="lg"
+              disabled={isGenerating}
             >
-              <BookOpen className="inline-block w-5 h-5 mr-2" />
-              Generate Book
+              {isGenerating ? (
+                <>
+                  <div className="inline-block w-5 h-5 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <BookOpen className="inline-block w-5 h-5 mr-2" />
+                  Generate Book
+                </>
+              )}
             </Button>
 
             {/* Subscription Info */}

@@ -165,6 +165,17 @@ export function RecentBooks({ userId }: RecentBooksProps) {
               </div>
 
               <div className="flex items-center gap-2">
+                {(book.status === 'outline_complete' || book.status === 'completed') && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => window.open(`/debug/book/${book.id}`, '_blank')}
+                    className="flex items-center gap-2"
+                  >
+                    <BookOpen className="h-4 w-4" />
+                    View Details
+                  </Button>
+                )}
                 {book.status === 'completed' && book.content_url && (
                   <Button
                     size="sm"
