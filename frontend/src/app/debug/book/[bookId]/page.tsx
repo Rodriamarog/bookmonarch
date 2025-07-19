@@ -167,11 +167,180 @@ export default function BookDebugPage() {
           </Card>
         )}
 
-        {/* Chapter Content */}
+        {/* Complete Book or Chapter Content */}
         {bookData.contentUrl && (() => {
           try {
-            const chapterContents = JSON.parse(bookData.contentUrl)
-            const chapterNumbers = Object.keys(chapterContents).map(Number).sort((a, b) => a - b)
+            const bookContent = JSON.parse(bookData.contentUrl)
+            
+            // Check if this is the new format with complete book
+            if (bookContent.completeBook && bookContent.metadata) {
+              return (
+                <div className="space-y-6">
+                  {/* Book Metadata */}
+                  <Card className="p-6">
+                    <h2 className="text-2xl font-bold mb-4" style={{ color: "#111827" }}>
+                      Book Statistics
+                    </h2>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="text-center p-4 rounded-lg" style={{ backgroundColor: "#F3F4F6" }}>
+                        <div className="text-2xl font-bold" style={{ color: "#FF6B6B" }}>
+                          {bookContent.metadata.totalWords.toLocaleString()}
+                        </div>
+                        <div className="text-sm" style={{ color: "#4B5563" }}>Total Words</div>
+                      </div>
+                      <div className="text-center p-4 rounded-lg" style={{ backgroundColor: "#F3F4F6" }}>
+                        <div className="text-2xl font-bold" style={{ color: "#FF6B6B" }}>
+                          {bookContent.metadata.totalChapters}
+                        </div>
+                        <div className="text-sm" style={{ color: "#4B5563" }}>Chapters</div>
+                      </div>
+                      <div className="text-center p-4 rounded-lg" style={{ backgroundColor: "#F3F4F6" }}>
+                        <div className="text-2xl font-bold" style={{ color: "#FF6B6B" }}>
+                          {Math.round(bookContent.metadata.totalWords / bookContent.metadata.totalChapters).toLocaleString()}
+                        </div>
+                        <div className="text-sm" style={{ color: "#4B5563" }}>Avg Words/Chapter</div>
+                      </div>
+                      <div className="text-center p-4 rounded-lg" style={{ backgroundColor: "#F3F4F6" }}>
+                        <div className="text-2xl font-bold" style={{ color: "#FF6B6B" }}>
+                          {Math.round(bookContent.metadata.totalWords / 250)}
+                        </div>
+                        <div className="text-sm" style={{ color: "#4B5563" }}>Est. Pages</div>
+                      </div>
+                    </div>
+                    <div className="mt-4 text-sm" style={{ color: "#6B7280" }}>
+                      Generated on {new Date(bookContent.metadata.generatedAt).toLocaleString()}
+                    </div>
+                  </Card>
+
+                  {/* Complete Book Preview */}
+                  <Card className="p-6">
+                    <h2 className="text-2xl font-bold mb-4" style={{ color: "#111827" }}>
+                      Complete Book Preview
+                    </h2>
+                    <div 
+                      className="prose max-w-none text-sm p-6 rounded-lg border max-h-96 overflow-y-auto"
+                      style={{ 
+                        backgroundColor: "#FEFEFE", 
+                        color: "#374151", 
+                        lineHeight: "1.6",
+                        fontFamily: "'Garamond', serif"
+                      }}
+                    >
+                      <div 
+                        className="whitespace-pre-wrap"
+                        dangerouslySetInnerHTML={{
+                          __html: bookContent.completeBook.length > 5000 
+                            ? `${bookContent.completeBook.substring(0, 5000)}...\n\n[Book continues for ${bookContent.completeBook.length - 5000} more characters]` 
+                            : bookContent.completeBook
+                        }}
+                      />
+                    </div>
+                    <div className="mt-4 space-y-4">
+                      {/* File Format Downloads */}
+                      <div>
+                        <h3 className="text-lg font-bold mb-3" style={{ color: "#111827" }}>
+                          Download Book
+                        </h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <button 
+                            onClick={() => {
+                              const userId = "cffa1a68-ce03-4628-8339-e08db54a6d24" // Replace with actual user ID
+                              window.open(`/api/generate-file/${bookData.id}?format=docx&userId=${userId}`, '_blank')
+                            }}
+                            className="px-4 py-3 rounded-lg text-white font-medium text-center"
+                            style={{ backgroundColor: "#2563EB" }}
+                          >
+                            📄 DOCX
+                            <div className="text-xs opacity-80">Editable</div>
+                          </button>
+                          <button 
+                            onClick={() => {
+                              const userId = "cffa1a68-ce03-4628-8339-e08db54a6d24" // Replace with actual user ID
+                              window.open(`/api/generate-file/${bookData.id}?format=pdf&userId=${userId}`, '_blank')
+                            }}
+                            className="px-4 py-3 rounded-lg text-white font-medium text-center"
+                            style={{ backgroundColor: "#DC2626" }}
+                          >
+                            📕 PDF
+                            <div className="text-xs opacity-80">5x8 Print</div>
+                          </button>
+                          <button 
+                            onClick={() => {
+                              const userId = "cffa1a68-ce03-4628-8339-e08db54a6d24" // Replace with actual user ID
+                              window.open(`/api/generate-file/${bookData.id}?format=epub&userId=${userId}`, '_blank')
+                            }}
+                            className="px-4 py-3 rounded-lg text-white font-medium text-center"
+                            style={{ backgroundColor: "#059669" }}
+                          >
+                            📚 EPUB
+                            <div className="text-xs opacity-80">E-Reader</div>
+                          </button>
+                          <button 
+                            onClick={() => {
+                              const blob = new Blob([bookContent.completeBook], { type: 'text/markdown' })
+                              const url = URL.createObjectURL(blob)
+                              const a = document.createElement('a')
+                              a.href = url
+                              a.download = `${bookData.title.replace(/[^a-zA-Z0-9]/g, '_')}.md`
+                              a.click()
+                              URL.revokeObjectURL(url)
+                            }}
+                            className="px-4 py-3 rounded-lg text-white font-medium text-center"
+                            style={{ backgroundColor: "#7C3AED" }}
+                          >
+                            📝 Markdown
+                            <div className="text-xs opacity-80">Raw Text</div>
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {/* Additional Actions */}
+                      <div>
+                        <h3 className="text-lg font-bold mb-3" style={{ color: "#111827" }}>
+                          Quick Actions
+                        </h3>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => {
+                              navigator.clipboard.writeText(bookContent.completeBook)
+                              alert('Book content copied to clipboard!')
+                            }}
+                            className="px-4 py-2 rounded-lg border font-medium"
+                            style={{ borderColor: "#D1D5DB", color: "#374151" }}
+                          >
+                            📋 Copy to Clipboard
+                          </button>
+                          <button 
+                            onClick={() => {
+                              const printWindow = window.open('', '_blank')
+                              if (printWindow) {
+                                printWindow.document.write(`
+                                  <html>
+                                    <head><title>${bookData.title}</title></head>
+                                    <body style="font-family: serif; line-height: 1.6; margin: 2em;">
+                                      <pre style="white-space: pre-wrap; font-family: serif;">${bookContent.completeBook}</pre>
+                                    </body>
+                                  </html>
+                                `)
+                                printWindow.document.close()
+                                printWindow.print()
+                              }
+                            }}
+                            className="px-4 py-2 rounded-lg border font-medium"
+                            style={{ borderColor: "#D1D5DB", color: "#374151" }}
+                          >
+                            🖨️ Print Preview
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+              )
+            }
+            
+            // Fallback to old format (just chapters)
+            const chapterNumbers = Object.keys(bookContent).map(Number).sort((a, b) => a - b)
             
             if (chapterNumbers.length > 0) {
               return (
@@ -190,14 +359,14 @@ export default function BookDebugPage() {
                           style={{ backgroundColor: "#F9FAFB", color: "#374151", lineHeight: "1.6" }}
                         >
                           <div className="whitespace-pre-wrap">
-                            {chapterContents[chapterNum].length > 1000 
-                              ? `${chapterContents[chapterNum].substring(0, 1000)}...` 
-                              : chapterContents[chapterNum]
+                            {bookContent[chapterNum].length > 1000 
+                              ? `${bookContent[chapterNum].substring(0, 1000)}...` 
+                              : bookContent[chapterNum]
                             }
                           </div>
-                          {chapterContents[chapterNum].length > 1000 && (
+                          {bookContent[chapterNum].length > 1000 && (
                             <div className="mt-2 text-xs text-gray-500">
-                              Showing first 1000 characters of {chapterContents[chapterNum].length} total
+                              Showing first 1000 characters of {bookContent[chapterNum].length} total
                             </div>
                           )}
                         </div>

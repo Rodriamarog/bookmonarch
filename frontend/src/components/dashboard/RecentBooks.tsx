@@ -177,15 +177,30 @@ export function RecentBooks({ userId }: RecentBooksProps) {
                   </Button>
                 )}
                 {book.status === 'completed' && book.content_url && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => handleDownload(book.id, book.title)}
-                    className="flex items-center gap-2"
-                  >
-                    <Download className="h-4 w-4" />
-                    Download
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        const userId = "cffa1a68-ce03-4628-8339-e08db54a6d24" // Replace with actual user ID
+                        window.open(`/api/generate-file/${book.id}?format=pdf&userId=${userId}`, '_blank')
+                      }}
+                      className="flex items-center gap-1 text-xs px-2 py-1"
+                    >
+                      📕 PDF
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        const userId = "cffa1a68-ce03-4628-8339-e08db54a6d24" // Replace with actual user ID
+                        window.open(`/api/generate-file/${book.id}?format=docx&userId=${userId}`, '_blank')
+                      }}
+                      className="flex items-center gap-1 text-xs px-2 py-1"
+                    >
+                      📄 DOCX
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>

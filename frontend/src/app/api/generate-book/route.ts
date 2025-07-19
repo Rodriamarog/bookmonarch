@@ -383,6 +383,59 @@ async function generateBookAsync(bookId: string, request: BookGenerationRequest)
       })
       .eq('id', bookId)
 
+    // TASK 7.3: Finalize and assemble the book
+    console.log(`Starting book finalization for book ${bookId}`)
+    
+    try {
+      await updateBookProgress(bookId, 'Compiling book content...', 85)
+      
+      // Compile all chapters into a complete book markdown
+      const completeBook = await assembleCompleteBook(outline, chapterContents, bookId)
+      
+      await updateBookProgress(bookId, 'Storing final book file...', 90)
+      
+      // Store the complete book (for now, we'll store as JSON in content_url)
+      // In production, this would be uploaded to Supabase Storage
+      const finalBookData = {
+        outline: outline,
+        chapters: chapterContents,
+        completeBook: completeBook,
+        metadata: {
+          totalWords: countTotalWords(chapterContents),
+          totalChapters: Object.keys(chapterContents).length,
+          generatedAt: new Date().toISOString()
+        }
+      }
+      
+      await updateBookProgress(bookId, 'Updating database...', 95)
+      
+      // Update database with completion status and final content
+      await supabase
+        .from('books')
+        .update({
+          status: 'completed',
+          progress: 100,
+          content_url: JSON.stringify(finalBookData)
+        })
+        .eq('id', bookId)
+      
+      await updateBookProgress(bookId, 'Book generation complete!', 100)
+      console.log(`Book finalization completed successfully for book ${bookId}`)
+      
+    } catch (finalizationError) {
+      console.error(`Error during book finalization for ${bookId}:`, finalizationError)
+      
+      // If finalization fails, still mark chapters as complete
+      await supabase
+        .from('books')
+        .update({
+          status: 'chapters_complete',
+          progress: 80,
+          error_message: `Finalization failed: ${finalizationError instanceof Error ? finalizationError.message : 'Unknown error'}`
+        })
+        .eq('id', bookId)
+    }
+
   } catch (error) {
     console.error('Book generation error:', error)
     
@@ -409,6 +462,100 @@ async function updateBookProgress(bookId: string, stage: string, progress: numbe
       // We'll store the current stage in a separate field when we add it to the schema
     })
     .eq('id', bookId)
+}
+
+// Helper function to assemble complete book from chapters
+async function assembleCompleteBook(
+  outline: BookOutline, 
+  chapterContents: { [key: number]: string }, 
+  bookId: string
+): Promise<string> {
+  console.log(`Assembling complete book for ${bookId}`)
+  
+  // Create the complete book with professional formatting
+  let completeBook = ''
+  
+  // Title Page (centered)
+  completeBook += `<div style="text-align: center; font-family: 'Garamond', serif; page-break-after: always; margin-top: 200px;">\n\n`
+  completeBook += `# ${outline.title}\n\n`
+  completeBook += `**${outline.author}**\n\n`
+  completeBook += `</div>\n\n`
+  completeBook += `<div style="page-break-after: always;"></div>\n\n`
+  
+  // Book Summary Page
+  completeBook += `<div style="font-family: 'Garamond', serif; page-break-after: always;">\n\n`
+  completeBook += `## About This Book\n\n`
+  completeBook += `${outline.plotSummary}\n\n`
+  completeBook += `</div>\n\n`
+  completeBook += `<div style="page-break-after: always;"></div>\n\n`
+  
+  // Table of Contents
+  completeBook += `<div style="font-family: 'Garamond', serif; page-break-after: always;">\n\n`
+  completeBook += `## Table of Contents\n\n`
+  for (let i = 1; i <= 15; i++) {
+    if (outline.chapterTitles[i - 1]) {
+      completeBook += `${i}. ${outline.chapterTitles[i - 1]} ........................... ${i + 3}\n\n`
+    }
+  }
+  completeBook += `</div>\n\n`
+  completeBook += `<div style="page-break-after: always;"></div>\n\n`
+  
+  // Add all chapters with professional formatting
+  const chapterNumbers = Object.keys(chapterContents).map(Number).sort((a, b) => a - b)
+  
+  for (const chapterNum of chapterNumbers) {
+    const chapterTitle = outline.chapterTitles[chapterNum - 1] || `Chapter ${chapterNum}`
+    const chapterContent = chapterContents[chapterNum]
+    
+    // Start new page for each chapter
+    completeBook += `<div style="font-family: 'Garamond', serif; page-break-before: always; padding: 40px 0;">\n\n`
+    
+    // Chapter header (remove hardcoded numbers, use AI-generated titles)
+    completeBook += `<div style="text-align: center; margin-bottom: 40px;">\n\n`
+    completeBook += `## ${chapterTitle}\n\n`
+    completeBook += `</div>\n\n`
+    
+    // Chapter content with proper paragraph spacing
+    const formattedContent = chapterContent
+      .split('\n\n')
+      .map(paragraph => paragraph.trim())
+      .filter(paragraph => paragraph.length > 0)
+      .join('\n\n')
+    
+    completeBook += `${formattedContent}\n\n`
+    completeBook += `</div>\n\n`
+    
+    // Page number footer (will be handled by CSS)
+    completeBook += `<div style="position: fixed; bottom: 20px; width: 100%; text-align: center; font-family: 'Garamond', serif; font-size: 12px; color: #666;">Page ${chapterNum + 3}</div>\n\n`
+  }
+  
+  // Copyright Page (last page)
+  completeBook += `<div style="page-break-before: always;"></div>\n\n`
+  completeBook += `<div style="font-family: 'Garamond', serif; text-align: center; margin-top: 300px;">\n\n`
+  completeBook += `---\n\n`
+  completeBook += `Copyright © ${new Date().getFullYear()} ${outline.author}\n\n`
+  completeBook += `All rights reserved.\n\n`
+  completeBook += `No part of this publication may be reproduced, distributed, or transmitted in any form or by any means, including photocopying, recording, or other electronic or mechanical methods, without the prior written permission of the author, except in the case of brief quotations embodied in critical reviews and certain other noncommercial uses permitted by copyright law.\n\n`
+  completeBook += `</div>\n\n`
+  
+  console.log(`Complete book assembled: ${completeBook.length} characters`)
+  return completeBook
+}
+
+// Helper function to count total words across all chapters
+function countTotalWords(chapterContents: { [key: number]: string }): number {
+  let totalWords = 0
+  
+  for (const chapterContent of Object.values(chapterContents)) {
+    if (typeof chapterContent === 'string' && !chapterContent.startsWith('[Chapter')) {
+      // Count words (split by whitespace and filter empty strings)
+      const words = chapterContent.trim().split(/\s+/).filter(word => word.length > 0)
+      totalWords += words.length
+    }
+  }
+  
+  console.log(`Total word count: ${totalWords} words`)
+  return totalWords
 }
 
 // Generate access token for anonymous books
