@@ -11,6 +11,6 @@ export const STRIPE_PRODUCT_ID = process.env.NEXT_PUBLIC_STRIPE_PRODUCT_ID!
 // Stripe configuration
 export const STRIPE_CONFIG = {
   productId: STRIPE_PRODUCT_ID,
-  successUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard?success=true`,
-  cancelUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard?canceled=true`,
+  successUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/?success=true`,
+  cancelUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/?canceled=true`,
 }

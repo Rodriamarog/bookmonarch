@@ -47,10 +47,24 @@ BookMonarch is a subscription-based SaaS platform that enables users to generate
 
 #### Acceptance Criteria
 
-1. WHEN a user accesses book generation THEN the system SHALL require author name, book title, and genre
-2. WHEN optional fields are left blank THEN the system SHALL auto-generate plot, chapter titles, and writing style using AI
-3. WHEN a user submits book details THEN the system SHALL validate daily generation limit (10 books max)
-4. WHEN generation starts THEN the system SHALL display progress indicators and estimated completion time
+1. WHEN a user accesses book generation THEN the system SHALL require book title, author name, and book type (Non-fiction only for MVP)
+2. WHEN a user provides optional writing style THEN the system SHALL incorporate it into the generation process
+3. WHEN a user submits book details THEN the system SHALL validate daily generation limit (1 for free, 10 for pro)
+4. WHEN generation starts THEN the system SHALL display real-time progress with current stage information
+5. WHEN books are generated THEN they SHALL contain exactly 15 chapters with 800-1200 words each
+
+### Requirement 9
+
+**User Story:** As a user, I want the AI to generate high-quality, coherent books through a structured process, so that the output is professional and well-organized.
+
+#### Acceptance Criteria
+
+1. WHEN book generation starts THEN the system SHALL first generate a comprehensive outline with plot summary and 15 chapter titles
+2. WHEN the outline is complete THEN the system SHALL generate each chapter sequentially, maintaining continuity between chapters
+3. WHEN generating each chapter THEN the system SHALL use context from all previous chapters to ensure coherence
+4. WHEN a chapter is generated THEN the system SHALL save it to secure storage and update progress indicators
+5. WHEN all chapters are complete THEN the system SHALL compile them into a complete book file
+6. WHEN generation fails at any stage THEN the system SHALL provide clear error messages and cleanup partial content
 
 ### Requirement 4
 

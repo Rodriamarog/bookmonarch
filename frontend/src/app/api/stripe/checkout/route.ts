@@ -90,8 +90,8 @@ export async function POST(request: NextRequest) {
         },
       ],
       mode: 'subscription',
-      success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard?canceled=true`,
+      success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/?success=true`,
+      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/?canceled=true`,
       metadata: {
         user_id: userId,
       },

@@ -22,7 +22,7 @@ export function AccentStar({ className = '', size = 'md', color = 'coral', anima
     green: '#00D59B'
   }
 
-  const animationClass = animated ? 'animate-pulse' : ''
+  const animationClass = animated ? 'animate-bounce' : ''
 
   return (
     <svg
@@ -84,7 +84,7 @@ export function AccentCircle({ className = '', size = 'md', color = 'coral', ani
     green: '#00D59B'
   }
 
-  const animationClass = animated ? 'animate-ping' : ''
+  const animationClass = animated ? 'animate-bounce' : ''
 
   return (
     <div

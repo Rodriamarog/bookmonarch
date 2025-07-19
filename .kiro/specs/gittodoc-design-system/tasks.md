@@ -42,7 +42,9 @@
   - Create geometric accent elements (stars, diamonds) as decorative components
   - _Requirements: 6.1, 6.2, 6.3_
 
-- [ ] 5. Create user dashboard with generation quota tracking
+- [x] 5. Create user dashboard with generation quota tracking
+
+
   - Build dashboard layout showing daily generation count and limits
   - Display recent books with status indicators
   - Implement quick book generation form
@@ -50,18 +52,45 @@
   - _Requirements: 5.1, 5.2, 2.2_
 
 - [ ] 6. Implement book generation form with validation
-  - Create multi-step form for book details (title, author, genre)
-  - Add optional fields for plot, writing style, and chapter count
+  - Update form to require book title, author name, and book type (Non-fiction only for MVP)
+  - Add optional writing style field with helpful placeholder text
+  - Remove chapter count selection (fixed at 15 chapters)
   - Implement client-side validation and error handling
-  - Add progress indicators and user feedback during submission
-  - _Requirements: 3.1, 3.2, 3.3_
+  - Add real-time progress indicators with stage information
+  - _Requirements: 3.1, 3.2, 3.3, 9.1_
 
-- [ ] 7. Build Google Gemini AI integration for book generation
-  - Set up Google Gemini 2.0 Flash API client
-  - Implement plot generation based on user inputs
-  - Create chapter title and outline generation
-  - Build full chapter content generation with streaming support
-  - _Requirements: 3.2, 3.4_
+- [ ] 7. Build Google Gemini AI integration and orchestration system
+  - Set up Google Gemini 2.0 Flash API client with proper authentication
+  - Create /api/generate-book endpoint with comprehensive validation and authorization
+  - Implement daily generation limit checking with automatic reset logic
+  - Build asynchronous book generation orchestration with progress tracking
+  - Create /api/book-status/[bookId] endpoint for real-time progress polling
+  - _Requirements: 3.2, 3.3, 3.4, 9.1, 9.6_
+
+- [ ] 7.1. Implement AI outline generation (LLM Call 1)
+  - Create structured prompts for book outline generation
+  - Build JSON schema validation for outline responses
+  - Generate plot summary, writing style guide, and 15 chapter titles
+  - Store outline data in database and prepare for chapter generation
+  - Handle outline generation errors with proper cleanup
+  - _Requirements: 9.1, 9.2_
+
+- [ ] 7.2. Implement iterative chapter content generation (LLM Calls 2-16)
+  - Build chapter generation loop with continuity context
+  - Create chapter-specific prompts with previous chapters summary
+  - Implement chapter content validation and storage to Supabase Storage
+  - Generate chapter summaries for maintaining narrative continuity
+  - Update progress indicators for each chapter completion
+  - Handle chapter generation failures with partial recovery
+  - _Requirements: 9.2, 9.3, 9.4_
+
+- [ ] 7.3. Implement book finalization and assembly
+  - Compile all chapter files into complete book markdown
+  - Store final book file in Supabase Storage with proper naming
+  - Update database with completion status and content URLs
+  - Increment user's daily generation count
+  - Clean up temporary files and update final progress to 100%
+  - _Requirements: 9.5, 5.2_
 
 - [ ] 8. Create file generation and format conversion system
   - Implement DOCX generation from book content

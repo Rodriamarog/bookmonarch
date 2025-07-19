@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button, Card, Input, Select, Label, AccentStar, AccentDiamond, AccentCircle } from "@/components/ui"
 import { SignInModal } from "@/components/auth/SignInModal"
 import { SubscriptionButton } from "@/components/subscription/SubscriptionButton"
+import { RecentBooks } from "@/components/dashboard/RecentBooks"
 import { useAuthContext } from "@/contexts/AuthContext"
 import { Crown, BookOpen, Settings, User } from "lucide-react"
 
@@ -12,7 +13,31 @@ export default function BookMonarchDashboard() {
   const [authorName, setAuthorName] = useState("")
   const [genre, setGenre] = useState("")
   const [showSignInModal, setShowSignInModal] = useState(false)
+  const [notification, setNotification] = useState<string | null>(null)
   const { user, profile, loading, signOut } = useAuthContext()
+
+  // Handle URL parameters for success/cancel notifications
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const success = urlParams.get('success')
+    const canceled = urlParams.get('canceled')
+
+    if (success === 'true') {
+      setNotification('🎉 Welcome to BookMonarch Pro! You can now generate up to 10 books per day.')
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (canceled === 'true') {
+      setNotification('Payment was canceled. You can try again anytime!')
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+
+    // Auto-hide notification after 5 seconds
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [notification])
 
   const handleSignOut = async () => {
     await signOut()
@@ -86,6 +111,29 @@ export default function BookMonarchDashboard() {
         </div>
       </header>
 
+      {/* Notification */}
+      {notification && (
+        <div className="fixed top-4 right-4 z-50 max-w-md">
+          <div 
+            className="p-4 rounded-lg border-4 border-black shadow-lg"
+            style={{
+              backgroundColor: '#D1FAE5',
+              boxShadow: '4px 4px 0px 0px rgba(0, 0, 0, 1)'
+            }}
+          >
+            <p className="text-sm font-bold" style={{ color: '#111827' }}>
+              {notification}
+            </p>
+            <button
+              onClick={() => setNotification(null)}
+              className="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Dashboard */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="text-center mb-8">
@@ -98,10 +146,10 @@ export default function BookMonarchDashboard() {
         </div>
 
         {/* Decorative Elements */}
-        <AccentStar size="sm" color="coral" className="absolute top-20 left-20 opacity-60" />
-        <AccentDiamond size="md" color="mint" className="absolute top-32 right-32 opacity-60" />
-        <AccentStar size="lg" color="red" className="absolute bottom-40 right-20 opacity-60" />
-        <AccentCircle size="md" color="green" className="absolute bottom-20 left-40 opacity-60" />
+        <AccentStar size="sm" color="coral" className="absolute top-20 left-20 opacity-60" animated />
+        <AccentDiamond size="md" color="mint" className="absolute top-32 right-32 opacity-60" animated />
+        <AccentStar size="lg" color="red" className="absolute bottom-40 right-20 opacity-60" animated />
+        <AccentCircle size="md" color="green" className="absolute bottom-20 left-40 opacity-60" animated />
 
         {/* Book Generation Form */}
         <Card variant="elevated" className="w-full max-w-2xl mx-auto relative">
@@ -162,17 +210,10 @@ export default function BookMonarchDashboard() {
           </div>
         </Card>
 
-        {/* Recent Books Section (placeholder) */}
+        {/* Recent Books Section */}
         {user && (
           <div className="mt-12">
-            <h2 className="text-2xl font-bold mb-4" style={{ color: "#111827" }}>
-              Your Books
-            </h2>
-            <div className="bg-white rounded-lg border border-gray-200 p-6 text-center">
-              <p style={{ color: "#4B5563" }}>
-                Your generated books will appear here
-              </p>
-            </div>
+            <RecentBooks userId={user.id} />
           </div>
         )}
       </main>
