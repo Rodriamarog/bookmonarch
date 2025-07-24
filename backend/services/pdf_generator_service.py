@@ -43,7 +43,7 @@ class BookPDFTemplate(BaseDocTemplate):
         
         # Margins as specified in requirements
         self.margin_inside = 0.375 * inch
-        self.margin_outside = 0.25 * inch
+        self.margin_outside = 0.375 * inch
         self.margin_top = 0.5 * inch
         self.margin_bottom = 0.5 * inch
         
@@ -339,8 +339,8 @@ class PDFGeneratorService:
                     current_paragraph = []
                 continue
             
-            # Check for headers
-            if line.startswith('## '):
+            # Check for headers (handle multiple # levels)
+            if line.startswith('#### '):
                 # End current paragraph
                 if current_paragraph:
                     parts.append({
@@ -350,8 +350,8 @@ class PDFGeneratorService:
                     current_paragraph = []
                 
                 parts.append({
-                    'type': 'heading2',
-                    'text': line[3:].strip()
+                    'type': 'heading3',  # Treat #### as heading3
+                    'text': line[5:].strip()
                 })
             elif line.startswith('### '):
                 # End current paragraph
@@ -365,6 +365,19 @@ class PDFGeneratorService:
                 parts.append({
                     'type': 'heading3',
                     'text': line[4:].strip()
+                })
+            elif line.startswith('## '):
+                # End current paragraph
+                if current_paragraph:
+                    parts.append({
+                        'type': 'paragraph',
+                        'text': ' '.join(current_paragraph)
+                    })
+                    current_paragraph = []
+                
+                parts.append({
+                    'type': 'heading2',
+                    'text': line[3:].strip()
                 })
             elif line.startswith('- ') or line.startswith('* '):
                 # End current paragraph

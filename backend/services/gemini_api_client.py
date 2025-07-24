@@ -15,7 +15,7 @@ from config import Config
 
 
 def retry_with_exponential_backoff(max_retries: int = 3, base_delay: float = 1.0):
-    """Decorator for exponential backoff retry logic."""
+    """Decorator for exponential backoff retry logic with special rate limit handling."""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -32,11 +32,28 @@ def retry_with_exponential_backoff(max_retries: int = 3, base_delay: float = 1.0
                         raise e
                     
                     if attempt < max_retries - 1:  # Don't sleep on last attempt
-                        delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
-                        logging.getLogger(__name__).warning(
-                            f"API call failed (attempt {attempt + 1}/{max_retries}): {str(e)}. "
-                            f"Retrying in {delay:.2f} seconds..."
-                        )
+                        # Check if this is a rate limit error
+                        error_str = str(e).lower()
+                        is_rate_limit = any(keyword in error_str for keyword in [
+                            'rate limit', 'quota', 'resource_exhausted', 'resourceexhausted',
+                            'too many requests', '429', 'rate exceeded', 'quota exceeded'
+                        ])
+                        
+                        if is_rate_limit:
+                            # Use 30 second delay for rate limit errors
+                            delay = 30.0
+                            logging.getLogger(__name__).warning(
+                                f"Rate limit encountered (attempt {attempt + 1}/{max_retries}): {str(e)}. "
+                                f"Waiting {delay} seconds before retrying..."
+                            )
+                        else:
+                            # Use exponential backoff for other errors
+                            delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                            logging.getLogger(__name__).warning(
+                                f"API call failed (attempt {attempt + 1}/{max_retries}): {str(e)}. "
+                                f"Retrying in {delay:.2f} seconds..."
+                            )
+                        
                         time.sleep(delay)
                     else:
                         logging.getLogger(__name__).error(
@@ -239,9 +256,16 @@ Requirements:
 - Format in markdown with proper headers and structure (## for main sections, ### for subsections)
 - Ensure content flows logically and connects to the overall book theme
 - Do NOT include the chapter title or chapter number in your response - start directly with the content
-- Do NOT include any meta commentary, author notes, or explanations about the writing process
-- Do NOT use phrases like "In this chapter", "As the author", "Let me explain", etc.
-- Use proper markdown formatting with clear line breaks between sections and bullet points
+- Do NOT include any LLM meta commentary, LLM notes, or explanations about the writing process
+- You are the human author. Don't write anything that suggests you're an LLM.
+- Use proper markdown formatting with clear line breaks between sections
+- Do NOT use tables ever.
+- ABSOLUTELY NO BULLET POINTS, LISTS, OR ANY LIST FORMATTING WHATSOEVER
+- Do NOT use *, -, +, 1., 2., or any other list markers
+- Do NOT create numbered lists, bulleted lists, or any kind of list structure
+- Write ONLY in flowing paragraphs with headers to organize content
+- Every piece of information must be presented in paragraph form, not as lists
+- If you need to present multiple points, write them as separate paragraphs or incorporate them into flowing sentences within paragraphs
 
 Return only the chapter content in markdown format. Do not include the chapter title or number."""
     
@@ -336,20 +360,6 @@ Do not include any text before or after the JSON. Only return valid JSON."""
         cleaned = re.sub(r'^```markdown\s*', '', response, flags=re.MULTILINE)
         cleaned = re.sub(r'^```\s*$', '', cleaned, flags=re.MULTILINE)
         cleaned = cleaned.strip()
-        
-        # Remove common meta commentary patterns
-        meta_patterns = [
-            r'\*\*Note:.*?\n',
-            r'\*\*Author\'s Note:.*?\n',
-            r'\[Author\'s commentary:.*?\]',
-            r'\*\*Commentary:.*?\n',
-            r'^.*In this chapter.*?\n',
-            r'^.*As the author.*?\n',
-            r'^.*Let me explain.*?\n'
-        ]
-        
-        for pattern in meta_patterns:
-            cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE | re.MULTILINE)
         
         # Clean up excessive whitespace but preserve proper spacing
         # Only collapse 3+ consecutive newlines to 2 newlines

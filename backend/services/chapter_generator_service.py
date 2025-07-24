@@ -4,6 +4,7 @@ Service for generating individual book chapters using the Gemini API.
 
 import logging
 import re
+import time
 from typing import List, Dict, Any, Optional
 from models.book_models import BookOutline, Chapter
 from services.gemini_api_client import GeminiAPIClient
@@ -62,6 +63,11 @@ class ChapterGeneratorService:
                 
                 self.logger.info(f"Successfully generated chapter {i + 1} ({chapter.word_count} words)")
                 
+                # Add 10 second delay between chapter generations (except for the last chapter)
+                if i < len(outline.chapters) - 1:
+                    self.logger.info("Waiting 10 seconds before generating next chapter...")
+                    time.sleep(10)
+                
             except Exception as e:
                 error_msg = f"Failed to generate chapter {i + 1}: {str(e)}"
                 self.logger.error(error_msg)
@@ -102,7 +108,7 @@ class ChapterGeneratorService:
             content = self._generate_chapter_with_retry(outline, chapter_index, max_retries=3)
             
             # Clean the content
-            cleaned_content = self.clean_chapter_content(content)
+            cleaned_content = self.clean_chapter_content(content, chapter_info.get('title'))
             
             # Create chapter object
             chapter = Chapter(
@@ -164,12 +170,13 @@ class ChapterGeneratorService:
         
         raise ChapterGenerationError(error_msg)
     
-    def clean_chapter_content(self, raw_content: str) -> str:
+    def clean_chapter_content(self, raw_content: str, chapter_title: str = None) -> str:
         """
         Clean chapter content by fixing basic formatting issues.
         
         Args:
             raw_content: Raw content from API
+            chapter_title: The chapter title to remove if it appears at the beginning
             
         Returns:
             str: Cleaned content
@@ -179,10 +186,52 @@ class ChapterGeneratorService:
         
         content = raw_content.strip()
         
+        # Remove chapter title if it appears at the beginning of content
+        if chapter_title:
+            content = self._remove_duplicate_chapter_title(content, chapter_title)
+        
         # Only do basic formatting cleanup
         content = self._clean_formatting(content)
         
         return content.strip()
+    
+    def _remove_duplicate_chapter_title(self, content: str, chapter_title: str) -> str:
+        """
+        Remove the first instance of the chapter title if it appears in the content.
+        
+        Args:
+            content: The chapter content
+            chapter_title: The chapter title to look for and remove
+            
+        Returns:
+            str: Content with duplicate title removed
+        """
+        if not chapter_title or not content:
+            return content
+        
+        lines = content.split('\n')
+        
+        # Look for the chapter title in the first few lines
+        for i, line in enumerate(lines[:5]):  # Only check first 5 lines
+            line_stripped = line.strip()
+            
+            # Check for exact match or as a header
+            if (line_stripped == chapter_title or 
+                line_stripped == f"# {chapter_title}" or
+                line_stripped == f"## {chapter_title}" or
+                line_stripped == f"### {chapter_title}"):
+                
+                # Remove this line and any immediately following empty lines
+                lines.pop(i)
+                
+                # Remove any empty lines that follow
+                while i < len(lines) and not lines[i].strip():
+                    lines.pop(i)
+                
+                self.logger.info(f"Removed duplicate chapter title: {chapter_title}")
+                break
+        
+        return '\n'.join(lines)
     
     def _clean_formatting(self, content: str) -> str:
         """Clean up formatting issues in the content."""
