@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Book Generation Complete!</h1>
+<div class="success">
+    <p>Your book "{{ book_title }}" by {{ author }} has been successfully generated.</p>
+</div>
+
+<h3>Download Your Files:</h3>
+<div style="margin: 20px 0;">
+    <p><a href="/download/{{ pdf_filename }}" style="display: inline-block; background-color: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; margin: 5px;">Download PDF</a></p>
+    <p><a href="/download/{{ epub_filename }}" style="display: inline-block; background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; margin: 5px;">Download EPUB</a></p>
+    <p><a href="/download/{{ metadata_filename }}" style="display: inline-block; background-color: #6c757d; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; margin: 5px;">Download Metadata</a></p>
+</div>
+
+<h3>Publishing Information:</h3>
+<div style="background-color: #f8f9fa; padding: 15px; border-radius: 4px; margin: 20px 0;">
+    <p><strong>Trim Size:</strong> 5x8 inches</p>
+    <p><strong>Bleed Settings:</strong> No Bleed</p>
+    <p><strong>Total Chapters:</strong> 15</p>
+    <p><strong>Estimated Word Count:</strong> ~21,000 words</p>
+</div>
+
+<p><a href="/" style="color: #007bff; text-decoration: none;">← Generate Another Book</a></p>
+{% endblock %}
