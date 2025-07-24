@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 from io import BytesIO
+from datetime import datetime
 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
@@ -144,6 +145,9 @@ class PDFGeneratorService:
             # Add chapters
             self._add_chapters(story, book_data.chapters)
             
+            # Add copyright page
+            self._add_copyright_page(story, book_data)
+            
             # Build the PDF
             doc.build(story)
             
@@ -238,6 +242,26 @@ class PDFGeneratorService:
                 spaceBefore=6,
                 spaceAfter=6,
                 leftIndent=0,
+                textColor=colors.black
+            ),
+            'copyright': ParagraphStyle(
+                'Copyright',
+                parent=base_styles['Normal'],
+                fontName='Times-Roman',
+                fontSize=10,
+                alignment=TA_CENTER,
+                spaceBefore=6,
+                spaceAfter=6,
+                textColor=colors.black
+            ),
+            'copyright_title': ParagraphStyle(
+                'CopyrightTitle',
+                parent=base_styles['Heading2'],
+                fontName='Times-Bold',
+                fontSize=14,
+                alignment=TA_CENTER,
+                spaceBefore=24,
+                spaceAfter=18,
                 textColor=colors.black
             )
         }
@@ -417,6 +441,45 @@ class PDFGeneratorService:
         text = re.sub(r'`(.*?)`', r'<font name="Courier">\1</font>', text)
         
         return text
+    
+    def _add_copyright_page(self, story: List, book_data: BookData):
+        """Add copyright page to the document."""
+        # Page break to start copyright on new page
+        story.append(PageBreak())
+        
+        # Add vertical spacing to center content
+        story.append(Spacer(1, 1.5 * inch))
+        
+        # Copyright title
+        story.append(Paragraph("Copyright", self.styles['copyright_title']))
+        story.append(Spacer(1, 0.5 * inch))
+        
+        # Get current year
+        current_year = datetime.now().year
+        
+        # Main copyright notice
+        copyright_text = f"Copyright © {current_year} {book_data.author}"
+        story.append(Paragraph(copyright_text, self.styles['copyright']))
+        story.append(Spacer(1, 0.3 * inch))
+        
+        # All rights reserved
+        story.append(Paragraph("All rights reserved.", self.styles['copyright']))
+        story.append(Spacer(1, 0.3 * inch))
+        
+        # Standard copyright disclaimer
+        disclaimer_text = """No part of this publication may be reproduced, distributed, or transmitted in any form or by any means, including photocopying, recording, or other electronic or mechanical methods, without the prior written permission of the author, except in the case of brief quotations embodied in critical reviews and certain other noncommercial uses permitted by copyright law."""
+        story.append(Paragraph(disclaimer_text, self.styles['copyright']))
+        story.append(Spacer(1, 0.3 * inch))
+        
+        # Contact information placeholder
+        contact_text = f"For permission requests, contact the author."
+        story.append(Paragraph(contact_text, self.styles['copyright']))
+        story.append(Spacer(1, 0.5 * inch))
+        
+        # Publication info
+        pub_info = f"First Edition {current_year}"
+        story.append(Paragraph(pub_info, self.styles['copyright']))
+        story.append(Spacer(1, 0.2 * inch))
     
     def _get_chapter_anchor(self, chapter: Chapter) -> str:
         """Generate anchor name for chapter."""

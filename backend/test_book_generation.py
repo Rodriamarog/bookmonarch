@@ -398,8 +398,8 @@ def main():
     tester = BookGenerationTester()
     
     # Test book details
-    book_title = "How To Sell On Facebook Marketplace"
-    author = "AI Assistant"
+    book_title = "The Telomere Effect: Protecting Your Genetic Timekeepers"
+    author = "Smith"
     
     print("\n" + "="*60)
     print("AI BOOK GENERATOR - TEST SUITE")
