@@ -29,7 +29,7 @@ class Config:
     PDF_MARGIN_OUTSIDE = 0.375  # inches
     PDF_MARGIN_TOP = 0.5  # inches
     PDF_MARGIN_BOTTOM = 0.5  # inches
-    PDF_FONT = 'Garamond'
+    PDF_FONT = 'Times New Roman'
     
     # Retry settings
     MAX_API_RETRIES = 3

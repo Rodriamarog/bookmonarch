@@ -221,7 +221,7 @@ Do not include any text before or after the JSON. Only return valid JSON."""
             next_chapter = chapters[chapter_index + 1]
             context_info += f"Next chapter: {next_chapter.get('title', '')}\n"
         
-        return f"""You are a professional non-fiction book writer. Write Chapter {chapter_index + 1} for the book "{book_title}".
+        return f"""You are a professional non-fiction book writer. Write the content for Chapter {chapter_index + 1} of the book "{book_title}".
 
 Chapter Details:
 - Title: {chapter_title}
@@ -236,13 +236,14 @@ Complete Book Outline:
 Requirements:
 - Write approximately 1400 words
 - Use clear, engaging, and professional writing style
-- Format in markdown with proper headers and structure
+- Format in markdown with proper headers and structure (## for main sections, ### for subsections)
 - Ensure content flows logically and connects to the overall book theme
+- Do NOT include the chapter title or chapter number in your response - start directly with the content
 - Do NOT include any meta commentary, author notes, or explanations about the writing process
 - Do NOT use phrases like "In this chapter", "As the author", "Let me explain", etc.
-- Start directly with the chapter content
+- Use proper markdown formatting with clear line breaks between sections and bullet points
 
-Return only the chapter content in markdown format. No additional commentary or explanations."""
+Return only the chapter content in markdown format. Do not include the chapter title or number."""
     
     def _create_metadata_prompt(self, book_title: str, author: str, content_summary: str) -> str:
         """Create prompt for metadata generation."""
@@ -331,6 +332,11 @@ Do not include any text before or after the JSON. Only return valid JSON."""
     
     def _clean_chapter_response(self, response: str) -> str:
         """Clean and validate chapter response."""
+        # First, remove markdown code blocks (same as JSON cleaning)
+        cleaned = re.sub(r'^```markdown\s*', '', response, flags=re.MULTILINE)
+        cleaned = re.sub(r'^```\s*$', '', cleaned, flags=re.MULTILINE)
+        cleaned = cleaned.strip()
+        
         # Remove common meta commentary patterns
         meta_patterns = [
             r'\*\*Note:.*?\n',
@@ -342,12 +348,12 @@ Do not include any text before or after the JSON. Only return valid JSON."""
             r'^.*Let me explain.*?\n'
         ]
         
-        cleaned = response
         for pattern in meta_patterns:
             cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE | re.MULTILINE)
         
-        # Clean up extra whitespace
-        cleaned = re.sub(r'\n\s*\n\s*\n', '\n\n', cleaned)
+        # Clean up excessive whitespace but preserve proper spacing
+        # Only collapse 3+ consecutive newlines to 2 newlines
+        cleaned = re.sub(r'\n\s*\n\s*\n+', '\n\n', cleaned)
         cleaned = cleaned.strip()
         
         if len(cleaned) < 500:

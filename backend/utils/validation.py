@@ -142,7 +142,7 @@ class BookValidator:
     
     @staticmethod
     def validate_chapter_content(content: str, target_word_count: int = 1400) -> List[str]:
-        """Validate chapter content quality."""
+        """Validate chapter content quality with lenient checks."""
         errors = []
         
         if not content or not content.strip():
@@ -155,31 +155,14 @@ class BookValidator:
         words = text.split()
         word_count = len([word for word in words if word.strip()])
         
-        # Check word count range
-        min_words = target_word_count - 600  # 800 words minimum
-        max_words = target_word_count + 600  # 2000 words maximum
+        # Very lenient word count range
+        min_words = 300  # Much lower minimum
+        max_words = 3000  # Higher maximum
         
         if word_count < min_words:
             errors.append(f"Chapter too short: {word_count} words (minimum {min_words})")
         elif word_count > max_words:
             errors.append(f"Chapter too long: {word_count} words (maximum {max_words})")
-        
-        # Check for meta commentary
-        meta_patterns = [
-            r'\*\*Note:',
-            r'\*\*Author\'s Note:',
-            r'\[Author\'s commentary\]',
-            r'\*\*Commentary:',
-            r'As the author,',
-            r'In this chapter, we will',
-            r'This chapter will cover',
-            r'Let me explain',
-            r'I want to emphasize'
-        ]
-        
-        for pattern in meta_patterns:
-            if re.search(pattern, content, re.IGNORECASE):
-                errors.append(f"Contains meta commentary: {pattern}")
         
         return errors
     

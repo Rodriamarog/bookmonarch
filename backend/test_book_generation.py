@@ -5,6 +5,7 @@ Test script for the AI Book Generator with caching capabilities.
 import os
 import json
 import logging
+import re
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -232,56 +233,120 @@ class BookGenerationTester:
             return None
     
     def _save_chapters_to_cache(self, chapters: list, cache_key: str):
-        """Save chapters to cache."""
-        cache_file = self.cache_dir / f"{cache_key}_chapters.json"
+        """Save chapters to cache as individual markdown files."""
+        # Create chapters directory
+        chapters_dir = self.cache_dir / f"{cache_key}_chapters"
+        chapters_dir.mkdir(exist_ok=True)
         
-        chapters_data = {
+        # Save each chapter as individual markdown file
+        for ch in chapters:
+            chapter_filename = f"chapter_{ch.number:02d}_{self._sanitize_filename(ch.title)}.md"
+            chapter_file = chapters_dir / chapter_filename
+            
+            # Create chapter content with metadata header
+            chapter_content = f"""---
+number: {ch.number}
+title: "{ch.title}"
+word_count: {ch.word_count}
+cached_at: "{datetime.now().isoformat()}"
+---
+
+# Chapter {ch.number}: {ch.title}
+
+{ch.content}
+"""
+            
+            with open(chapter_file, 'w', encoding='utf-8') as f:
+                f.write(chapter_content)
+        
+        # Create summary file
+        summary_data = {
+            'total_chapters': len(chapters),
+            'total_words': sum(ch.word_count for ch in chapters),
+            'cached_at': datetime.now().isoformat(),
             'chapters': [
                 {
                     'number': ch.number,
                     'title': ch.title,
-                    'content': ch.content,
-                    'word_count': ch.word_count
+                    'word_count': ch.word_count,
+                    'filename': f"chapter_{ch.number:02d}_{self._sanitize_filename(ch.title)}.md"
                 }
                 for ch in chapters
-            ],
-            'total_chapters': len(chapters),
-            'total_words': sum(ch.word_count for ch in chapters),
-            'cached_at': datetime.now().isoformat()
+            ]
         }
         
-        with open(cache_file, 'w', encoding='utf-8') as f:
-            json.dump(chapters_data, f, indent=2, ensure_ascii=False)
+        summary_file = chapters_dir / "summary.json"
+        with open(summary_file, 'w', encoding='utf-8') as f:
+            json.dump(summary_data, f, indent=2, ensure_ascii=False)
         
-        logger.info(f"Chapters cached to {cache_file} ({len(chapters)} chapters, {chapters_data['total_words']:,} words)")
+        logger.info(f"Chapters cached to {chapters_dir} ({len(chapters)} chapters, {summary_data['total_words']:,} words)")
     
     def _load_chapters_from_cache(self, cache_key: str) -> Optional[list]:
-        """Load chapters from cache."""
-        cache_file = self.cache_dir / f"{cache_key}_chapters.json"
+        """Load chapters from cache (markdown files)."""
+        chapters_dir = self.cache_dir / f"{cache_key}_chapters"
+        summary_file = chapters_dir / "summary.json"
         
-        if not cache_file.exists():
+        if not chapters_dir.exists() or not summary_file.exists():
             return None
         
         try:
-            with open(cache_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            # Load summary to get chapter info
+            with open(summary_file, 'r', encoding='utf-8') as f:
+                summary_data = json.load(f)
             
-            chapters = [
-                Chapter(
-                    number=ch['number'],
-                    title=ch['title'],
-                    content=ch['content'],
-                    word_count=ch['word_count']
+            chapters = []
+            for ch_info in summary_data['chapters']:
+                chapter_file = chapters_dir / ch_info['filename']
+                
+                if not chapter_file.exists():
+                    logger.warning(f"Chapter file not found: {chapter_file}")
+                    continue
+                
+                # Read markdown file
+                with open(chapter_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                # Parse frontmatter and content
+                if content.startswith('---'):
+                    parts = content.split('---', 2)
+                    if len(parts) >= 3:
+                        # Extract content after frontmatter
+                        chapter_content = parts[2].strip()
+                        
+                        # Remove the duplicate chapter header from content
+                        lines = chapter_content.split('\n')
+                        if lines and lines[0].startswith('# Chapter'):
+                            chapter_content = '\n'.join(lines[2:]).strip()  # Skip header and empty line
+                    else:
+                        chapter_content = content
+                else:
+                    chapter_content = content
+                
+                chapter = Chapter(
+                    number=ch_info['number'],
+                    title=ch_info['title'],
+                    content=chapter_content,
+                    word_count=ch_info['word_count']
                 )
-                for ch in data['chapters']
-            ]
+                chapters.append(chapter)
             
-            logger.info(f"Chapters loaded from cache: {cache_file} ({len(chapters)} chapters)")
+            # Sort chapters by number
+            chapters.sort(key=lambda x: x.number)
+            
+            logger.info(f"Chapters loaded from cache: {chapters_dir} ({len(chapters)} chapters)")
             return chapters
             
         except Exception as e:
             logger.error(f"Failed to load chapters from cache: {e}")
             return None
+    
+    def _sanitize_filename(self, filename: str) -> str:
+        """Sanitize filename by removing invalid characters."""
+        # Replace invalid characters with underscores
+        sanitized = re.sub(r'[<>:"/\\|?*]', '_', filename)
+        # Remove extra spaces and limit length
+        sanitized = re.sub(r'\s+', '_', sanitized.strip())[:50]
+        return sanitized
     
     def list_cached_books(self):
         """List all cached books."""
@@ -333,7 +398,7 @@ def main():
     tester = BookGenerationTester()
     
     # Test book details
-    book_title = "The Complete Guide to Python Programming"
+    book_title = "How To Sell On Facebook Marketplace"
     author = "AI Assistant"
     
     print("\n" + "="*60)

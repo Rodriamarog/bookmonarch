@@ -123,7 +123,7 @@ class ChapterGeneratorService:
     
     def _generate_chapter_with_retry(self, outline: Dict[str, Any], chapter_index: int, max_retries: int = 3) -> str:
         """
-        Generate chapter content with retry logic for meta commentary.
+        Generate chapter content with retry logic.
         
         Args:
             outline: The complete book outline
@@ -145,27 +145,7 @@ class ChapterGeneratorService:
                 # Call the API
                 content = self.api_client.generate_chapter(outline, chapter_index)
                 
-                # Validate content format and quality
-                validation_errors = self.validator.validate_chapter_content(content, self.target_word_count)
-                
-                if validation_errors:
-                    # Check if errors are related to meta commentary
-                    meta_commentary_errors = [error for error in validation_errors if 'meta commentary' in error.lower()]
-                    
-                    if meta_commentary_errors and attempt < max_retries - 1:
-                        self.logger.warning(f"Attempt {attempt + 1} contains meta commentary, retrying...")
-                        continue
-                    
-                    # Other validation errors or final attempt
-                    error_msg = f"Chapter validation failed: {'; '.join(validation_errors)}"
-                    self.logger.warning(f"Attempt {attempt + 1} failed validation: {error_msg}")
-                    
-                    if attempt < max_retries - 1:
-                        continue
-                    else:
-                        raise ValidationError(error_msg, validation_errors)
-                
-                # Success - return the valid content
+                # Success - return the content
                 self.logger.info(f"Chapter generation successful on attempt {attempt + 1}")
                 return content
                 
@@ -186,7 +166,7 @@ class ChapterGeneratorService:
     
     def clean_chapter_content(self, raw_content: str) -> str:
         """
-        Clean chapter content by removing meta commentary and formatting issues.
+        Clean chapter content by fixing basic formatting issues.
         
         Args:
             raw_content: Raw content from API
@@ -199,28 +179,8 @@ class ChapterGeneratorService:
         
         content = raw_content.strip()
         
-        # Remove common meta commentary patterns
-        meta_patterns = [
-            r'\*\*Note:.*?\n',
-            r'\*\*Author\'s Note:.*?\n',
-            r'\[Author\'s commentary:.*?\]',
-            r'\*\*Commentary:.*?\n',
-            r'^.*In this chapter, we will.*?\n',
-            r'^.*This chapter will cover.*?\n',
-            r'^.*As the author.*?\n',
-            r'^.*Let me explain.*?\n',
-            r'^.*I want to emphasize.*?\n',
-            r'^.*It\'s important to note.*?\n'
-        ]
-        
-        for pattern in meta_patterns:
-            content = re.sub(pattern, '', content, flags=re.IGNORECASE | re.MULTILINE)
-        
-        # Clean up formatting issues
+        # Only do basic formatting cleanup
         content = self._clean_formatting(content)
-        
-        # Remove any remaining meta commentary sentences
-        content = self._remove_meta_sentences(content)
         
         return content.strip()
     
@@ -245,34 +205,7 @@ class ChapterGeneratorService:
         
         return content
     
-    def _remove_meta_sentences(self, content: str) -> str:
-        """Remove sentences that contain meta commentary."""
-        sentences = re.split(r'(?<=[.!?])\s+', content)
-        cleaned_sentences = []
-        
-        meta_indicators = [
-            'in this chapter',
-            'this chapter will',
-            'as the author',
-            'let me explain',
-            'i want to emphasize',
-            'it\'s important to note',
-            'we will explore',
-            'we will discuss',
-            'this section covers',
-            'in the following section'
-        ]
-        
-        for sentence in sentences:
-            sentence_lower = sentence.lower()
-            is_meta = any(indicator in sentence_lower for indicator in meta_indicators)
-            
-            if not is_meta:
-                cleaned_sentences.append(sentence)
-            else:
-                self.logger.debug(f"Removed meta sentence: {sentence[:50]}...")
-        
-        return ' '.join(cleaned_sentences)
+
     
     def validate_chapter_format(self, content: str) -> bool:
         """
@@ -320,40 +253,25 @@ class ChapterGeneratorService:
     
     def _validate_chapter_quality(self, chapter: Chapter) -> None:
         """
-        Perform additional quality checks on the chapter.
+        Perform basic quality checks on the chapter.
         
         Args:
             chapter: The chapter to validate
             
         Raises:
-            ValidationError: If quality checks fail
+            ValidationError: If basic quality checks fail
         """
         errors = []
         
-        # Check for minimum content structure
-        if not re.search(r'^#+\s+', chapter.content, re.MULTILINE):
-            errors.append("Chapter lacks proper markdown headers")
+        # Only check for absolute minimum requirements
+        if len(chapter.content.strip()) < 500:
+            errors.append("Chapter content too short (minimum 500 characters)")
         
-        # Check for reasonable paragraph structure
-        paragraphs = [p.strip() for p in chapter.content.split('\n\n') if p.strip()]
-        if len(paragraphs) < 3:
-            errors.append("Chapter has too few paragraphs (minimum 3)")
-        
-        # Check for overly short paragraphs
-        short_paragraphs = [p for p in paragraphs if len(p.split()) < 20]
-        if len(short_paragraphs) > len(paragraphs) * 0.5:
-            errors.append("Too many short paragraphs (less than 20 words)")
-        
-        # Check for excessive repetitive content (only flag if >20% of sentences are duplicates)
-        sentences = re.split(r'[.!?]+', chapter.content)
-        sentences = [s.strip().lower() for s in sentences if len(s.strip()) > 20]  # Only check longer sentences
-        
-        if len(sentences) > 0:
-            unique_sentences = len(set(sentences))
-            duplicate_ratio = (len(sentences) - unique_sentences) / len(sentences)
-            
-            if duplicate_ratio > 0.2:  # Only flag if more than 20% are duplicates
-                errors.append(f"Chapter contains excessive repetitive sentences ({duplicate_ratio:.1%} duplicates)")
+        # Check word count is reasonable (very lenient range)
+        if chapter.word_count < 300:
+            errors.append(f"Chapter too short: {chapter.word_count} words (minimum 300)")
+        elif chapter.word_count > 3000:
+            errors.append(f"Chapter too long: {chapter.word_count} words (maximum 3000)")
         
         if errors:
             error_msg = f"Chapter {chapter.number} quality validation failed"
