@@ -1,96 +1,96 @@
 {
   "total_chapters": 15,
-  "total_words": 17452,
-  "cached_at": "2025-07-23T21:35:15.052040",
+  "total_words": 16979,
+  "cached_at": "2025-07-23T22:15:48.546740",
   "chapters": [
     {
       "number": 1,
       "title": "Understanding Telomeres: Your Genetic Timekeepers",
-      "word_count": 998,
+      "word_count": 897,
       "filename": "chapter_01_Understanding_Telomeres__Your_Genetic_Timekeepers.md"
     },
     {
       "number": 2,
       "title": "The Science of Aging: Telomere Shortening and Its Consequences",
-      "word_count": 1009,
+      "word_count": 1091,
       "filename": "chapter_02_The_Science_of_Aging__Telomere_Shortening_and_Its_.md"
     },
     {
       "number": 3,
       "title": "Telomere Testing: Measuring Your Biological Age",
-      "word_count": 1287,
+      "word_count": 1168,
       "filename": "chapter_03_Telomere_Testing__Measuring_Your_Biological_Age.md"
     },
     {
       "number": 4,
       "title": "Dietary Strategies for Telomere Support: Nourishing Your Cells",
-      "word_count": 1131,
+      "word_count": 1348,
       "filename": "chapter_04_Dietary_Strategies_for_Telomere_Support__Nourishin.md"
     },
     {
       "number": 5,
       "title": "The Power of Exercise: Moving Towards Longer Telomeres",
-      "word_count": 1270,
+      "word_count": 1372,
       "filename": "chapter_05_The_Power_of_Exercise__Moving_Towards_Longer_Telom.md"
     },
     {
       "number": 6,
       "title": "Stress Management Techniques: Calming the Mind, Protecting Telomeres",
-      "word_count": 1235,
+      "word_count": 1304,
       "filename": "chapter_06_Stress_Management_Techniques__Calming_the_Mind,_Pr.md"
     },
     {
       "number": 7,
       "title": "Sleep and Telomeres: The Importance of Rest and Recovery",
-      "word_count": 1452,
+      "word_count": 1231,
       "filename": "chapter_07_Sleep_and_Telomeres__The_Importance_of_Rest_and_Re.md"
     },
     {
       "number": 8,
       "title": "The Role of Social Connection: Nurturing Relationships for Telomere Health",
-      "word_count": 1189,
+      "word_count": 938,
       "filename": "chapter_08_The_Role_of_Social_Connection__Nurturing_Relations.md"
     },
     {
       "number": 9,
       "title": "Environmental Toxins and Telomeres: Minimizing Exposure",
-      "word_count": 1046,
+      "word_count": 1109,
       "filename": "chapter_09_Environmental_Toxins_and_Telomeres__Minimizing_Exp.md"
     },
     {
       "number": 10,
       "title": "Supplements and Telomeres: Exploring the Options",
-      "word_count": 1193,
+      "word_count": 1120,
       "filename": "chapter_10_Supplements_and_Telomeres__Exploring_the_Options.md"
     },
     {
       "number": 11,
       "title": "The Telomere Effect on Specific Health Conditions: From Heart Disease to Cancer",
-      "word_count": 1042,
+      "word_count": 1086,
       "filename": "chapter_11_The_Telomere_Effect_on_Specific_Health_Conditions_.md"
     },
     {
       "number": 12,
       "title": "Telomere Research: The Latest Breakthroughs and Future Directions",
-      "word_count": 1099,
+      "word_count": 1025,
       "filename": "chapter_12_Telomere_Research__The_Latest_Breakthroughs_and_Fu.md"
     },
     {
       "number": 13,
       "title": "Building Your Telomere-Protecting Lifestyle: A Personalized Approach",
-      "word_count": 1347,
+      "word_count": 1136,
       "filename": "chapter_13_Building_Your_Telomere-Protecting_Lifestyle__A_Per.md"
     },
     {
       "number": 14,
       "title": "The Ethical Considerations of Telomere Manipulation: A Responsible Approach",
-      "word_count": 1059,
+      "word_count": 1108,
       "filename": "chapter_14_The_Ethical_Considerations_of_Telomere_Manipulatio.md"
     },
     {
       "number": 15,
       "title": "Living a Longer, Healthier Life: Embracing the Telomere Effect",
-      "word_count": 1095,
+      "word_count": 1046,
       "filename": "chapter_15_Living_a_Longer,_Healthier_Life__Embracing_the_Tel.md"
     }
   ]

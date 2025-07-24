@@ -151,6 +151,12 @@ class ChapterGeneratorService:
                 # Call the API
                 content = self.api_client.generate_chapter(outline, chapter_index)
                 
+                # Validate markdown formatting
+                if not self._validate_markdown_formatting(content):
+                    error_msg = "Chapter lacks proper markdown formatting (insufficient headers)"
+                    self.logger.warning(f"Chapter formatting validation failed: {error_msg}")
+                    raise ValueError(error_msg)
+                
                 # Success - return the content
                 self.logger.info(f"Chapter generation successful on attempt {attempt + 1}")
                 return content
@@ -232,6 +238,30 @@ class ChapterGeneratorService:
                 break
         
         return '\n'.join(lines)
+    
+    def _validate_markdown_formatting(self, content: str) -> bool:
+        """
+        Validate that chapter content has proper markdown formatting.
+        
+        Args:
+            content: The content to validate
+            
+        Returns:
+            bool: True if content has at least 2 '#' symbols (proper headers)
+        """
+        if not content or not content.strip():
+            return False
+        
+        # Count '#' symbols in the content
+        hash_count = content.count('#')
+        
+        # Log the validation result
+        if hash_count < 2:
+            self.logger.warning(f"Chapter formatting validation failed: found {hash_count} '#' symbols, minimum required is 2")
+            return False
+        
+        self.logger.info(f"Chapter formatting validation passed: found {hash_count} '#' symbols")
+        return True
     
     def _clean_formatting(self, content: str) -> str:
         """Clean up formatting issues in the content."""
