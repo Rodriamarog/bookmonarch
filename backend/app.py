@@ -3,6 +3,7 @@ Main Flask application entry point for the AI Book Generator.
 """
 
 from flask import Flask
+from flask_cors import CORS
 from dotenv import load_dotenv
 from config import Config
 from utils.logging_config import setup_logging
@@ -18,6 +19,9 @@ logger = setup_logging()
 app = Flask(__name__)
 app.config.from_object(Config)
 
+# Enable CORS for frontend requests
+CORS(app, origins=["http://localhost:3000"])
+
 # Initialize configuration
 Config.init_app(app)
 
@@ -30,6 +34,7 @@ app.add_url_rule('/generate', 'generate_book', book_controller.generate_book, me
 app.add_url_rule('/progress', 'progress', book_controller.progress, methods=['GET'])
 app.add_url_rule('/results', 'results', book_controller.results, methods=['GET'])
 app.add_url_rule('/download/<filename>', 'download_file', book_controller.download_file, methods=['GET'])
+app.add_url_rule('/api/books/<book_id>', 'delete_book', book_controller.delete_book, methods=['DELETE'])
 
 if __name__ == '__main__':
     logger.info("Starting AI Book Generator application")
