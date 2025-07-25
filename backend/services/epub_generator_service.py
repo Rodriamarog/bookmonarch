@@ -15,6 +15,7 @@ import markdown
 from models.book_models import BookData, Chapter
 from config import Config
 from utils.validation import ValidationError
+from lib.supabase_storage import SupabaseStorageService, SupabaseStorageError
 
 
 class EPUBGenerationError(Exception):
@@ -27,17 +28,21 @@ class EPUBGeneratorService:
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+        
+        # Initialize Supabase Storage service
+        self.storage_service = SupabaseStorageService()
     
-    def create_book_epub(self, book_data: BookData, output_path: str) -> str:
+    def create_book_epub(self, book_data: BookData, user_id: str, book_id: str) -> str:
         """
-        Create a complete EPUB book from book data.
+        Create a complete EPUB book from book data and upload to Supabase Storage.
         
         Args:
             book_data: Complete book data with chapters
-            output_path: Path where EPUB should be saved
+            user_id: User ID for storage path
+            book_id: Book ID for storage path
             
         Returns:
-            str: Path to the generated EPUB file
+            str: Public URL of the uploaded EPUB file
             
         Raises:
             EPUBGenerationError: If EPUB generation fails
@@ -47,9 +52,13 @@ class EPUBGeneratorService:
         
         self.logger.info(f"Starting EPUB generation for '{book_data.title}'")
         
+        import tempfile
+        temp_epub_path = None
+        
         try:
-            # Ensure output directory exists
-            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            # Create temporary file for EPUB generation
+            with tempfile.NamedTemporaryFile(suffix='.epub', delete=False) as temp_file:
+                temp_epub_path = temp_file.name
             
             # Create EPUB book structure
             book = self._create_epub_structure(book_data)
@@ -61,17 +70,30 @@ class EPUBGeneratorService:
             self._create_navigation(book, book_data.chapters)
             
             # Write EPUB file
-            epub.write_epub(output_path, book, {})
+            epub.write_epub(temp_epub_path, book, {})
             
             # Validate the generated EPUB
-            self._validate_epub_output(output_path)
+            self._validate_epub_output(temp_epub_path)
             
-            self.logger.info(f"Successfully generated EPUB: {output_path}")
-            return output_path
+            # Generate storage path
+            storage_path = self.storage_service.generate_storage_path(user_id, book_id, 'book.epub')
             
+            # Upload to Supabase Storage
+            public_url = self.storage_service.upload_file(temp_epub_path, storage_path)
+            
+            self.logger.info(f"Successfully generated and uploaded EPUB: {public_url}")
+            return public_url
+            
+        except SupabaseStorageError as e:
+            self.logger.error(f"Failed to upload EPUB to storage: {str(e)}")
+            raise EPUBGenerationError(f"EPUB upload failed: {str(e)}") from e
         except Exception as e:
             self.logger.error(f"Failed to generate EPUB: {str(e)}")
             raise EPUBGenerationError(f"EPUB generation failed: {str(e)}") from e
+        finally:
+            # Clean up temporary file
+            if temp_epub_path:
+                self.storage_service.cleanup_temp_file(temp_epub_path)
     
     def _create_epub_structure(self, book_data: BookData) -> epub.EpubBook:
         """Create the basic EPUB book structure with metadata."""

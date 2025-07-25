@@ -17,10 +17,13 @@ def setup_storage_bucket():
     
     try:
         supabase_url = os.getenv('SUPABASE_URL')
-        supabase_key = os.getenv('SUPABASE_KEY')
+        supabase_service_key = os.getenv('SECRET_KEY')  # Use service role key for admin operations
         
-        # Create client
-        client = create_client(supabase_url, supabase_key)
+        if not supabase_service_key:
+            raise ValueError("SECRET_KEY (service role key) not found in environment variables")
+        
+        # Create client with service role key
+        client = create_client(supabase_url, supabase_service_key)
         print("✅ Connected to Supabase")
         
         # Check existing buckets
@@ -35,10 +38,7 @@ def setup_storage_bucket():
             
             result = client.storage.create_bucket(
                 id='books',
-                name='books',
-                public=False,  # Private bucket - users need signed URLs
-                file_size_limit=50 * 1024 * 1024,  # 50MB limit per file
-                allowed_mime_types=['application/pdf', 'application/epub+zip', 'application/json']
+                name='books'
             )
             
             print("✅ Books bucket created successfully!")

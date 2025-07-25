@@ -24,6 +24,7 @@ from reportlab.platypus.frames import Frame
 from models.book_models import BookData, Chapter
 from config import Config
 from utils.validation import ValidationError
+from lib.supabase_storage import SupabaseStorageService, SupabaseStorageError
 
 
 class PDFGenerationError(Exception):
@@ -91,6 +92,9 @@ class PDFGeneratorService:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         
+        # Initialize Supabase Storage service
+        self.storage_service = SupabaseStorageService()
+        
         # PDF configuration from Config
         self.page_width = Config.PDF_PAGE_WIDTH * inch
         self.page_height = Config.PDF_PAGE_HEIGHT * inch
@@ -102,16 +106,17 @@ class PDFGeneratorService:
         # Create styles
         self.styles = self._create_styles()
     
-    def create_book_pdf(self, book_data: BookData, output_path: str) -> str:
+    def create_book_pdf(self, book_data: BookData, user_id: str, book_id: str) -> str:
         """
-        Create a complete PDF book from book data.
+        Create a complete PDF book from book data and upload to Supabase Storage.
         
         Args:
             book_data: Complete book data with chapters
-            output_path: Path where PDF should be saved
+            user_id: User ID for storage path
+            book_id: Book ID for storage path
             
         Returns:
-            str: Path to the generated PDF file
+            str: Public URL of the uploaded PDF file
             
         Raises:
             PDFGenerationError: If PDF generation fails
@@ -121,13 +126,17 @@ class PDFGeneratorService:
         
         self.logger.info(f"Starting PDF generation for '{book_data.title}'")
         
+        import tempfile
+        temp_pdf_path = None
+        
         try:
-            # Ensure output directory exists
-            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            # Create temporary file for PDF generation
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
+                temp_pdf_path = temp_file.name
             
             # Create PDF document
             doc = BookPDFTemplate(
-                output_path,
+                temp_pdf_path,
                 pagesize=(self.page_width, self.page_height),
                 title=book_data.title,
                 author=book_data.author
@@ -152,14 +161,27 @@ class PDFGeneratorService:
             doc.build(story)
             
             # Validate the generated PDF
-            self._validate_pdf_output(output_path)
+            self._validate_pdf_output(temp_pdf_path)
             
-            self.logger.info(f"Successfully generated PDF: {output_path}")
-            return output_path
+            # Generate storage path
+            storage_path = self.storage_service.generate_storage_path(user_id, book_id, 'book.pdf')
             
+            # Upload to Supabase Storage
+            public_url = self.storage_service.upload_file(temp_pdf_path, storage_path)
+            
+            self.logger.info(f"Successfully generated and uploaded PDF: {public_url}")
+            return public_url
+            
+        except SupabaseStorageError as e:
+            self.logger.error(f"Failed to upload PDF to storage: {str(e)}")
+            raise PDFGenerationError(f"PDF upload failed: {str(e)}") from e
         except Exception as e:
             self.logger.error(f"Failed to generate PDF: {str(e)}")
             raise PDFGenerationError(f"PDF generation failed: {str(e)}") from e
+        finally:
+            # Clean up temporary file
+            if temp_pdf_path:
+                self.storage_service.cleanup_temp_file(temp_pdf_path)
     
     def _create_styles(self) -> Dict[str, ParagraphStyle]:
         """Create custom paragraph styles for the book."""

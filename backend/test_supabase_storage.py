@@ -93,7 +93,7 @@ def test_environment_variables():
     
     print("🔧 Checking environment variables...")
     
-    required_vars = ['SUPABASE_URL', 'SUPABASE_KEY']
+    required_vars = ['SUPABASE_URL', 'SECRET_KEY']
     missing_vars = []
     
     for var in required_vars:

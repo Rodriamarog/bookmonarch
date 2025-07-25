@@ -10,6 +10,7 @@ from models.book_models import BookMetadata, BookData
 from services.gemini_api_client import GeminiAPIClient
 from utils.validation import BookValidator, ValidationError
 from config import Config
+from lib.supabase_storage import SupabaseStorageService, SupabaseStorageError
 
 
 class MetadataGenerationError(Exception):
@@ -24,6 +25,9 @@ class MetadataGeneratorService:
         self.api_client = GeminiAPIClient()
         self.logger = logging.getLogger(__name__)
         self.validator = BookValidator()
+        
+        # Initialize Supabase Storage service
+        self.storage_service = SupabaseStorageService()
     
     def generate_book_metadata(self, book_title: str, author: str, content_summary: str) -> BookMetadata:
         """
@@ -163,20 +167,24 @@ class MetadataGeneratorService:
         
         self.logger.info("Metadata validation passed")
     
-    def create_metadata_document(self, metadata: BookMetadata, book_title: str, author: str, output_path: str) -> str:
+    def create_metadata_document(self, metadata: BookMetadata, book_title: str, author: str, user_id: str, book_id: str) -> str:
         """
-        Create a formatted metadata document as PDF for publishing.
+        Create a formatted metadata document as PDF for publishing and upload to Supabase Storage.
         
         Args:
             metadata: The metadata object
             book_title: Title of the book
             author: Author name
-            output_path: Path where PDF should be saved
+            user_id: User ID for storage path
+            book_id: Book ID for storage path
             
         Returns:
-            str: Path to the generated PDF file
+            str: Public URL of the uploaded PDF file
         """
         self.logger.info(f"Creating metadata PDF document for '{book_title}'")
+        
+        import tempfile
+        temp_pdf_path = None
         
         try:
             from reportlab.lib.pagesizes import letter
@@ -185,14 +193,14 @@ class MetadataGeneratorService:
             from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
             from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
             from reportlab.lib import colors
-            from pathlib import Path
             
-            # Ensure output directory exists
-            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            # Create temporary file for PDF generation
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
+                temp_pdf_path = temp_file.name
             
             # Create PDF document
             doc = SimpleDocTemplate(
-                output_path,
+                temp_pdf_path,
                 pagesize=letter,
                 rightMargin=72,
                 leftMargin=72,
@@ -318,12 +326,25 @@ class MetadataGeneratorService:
             # Build the PDF
             doc.build(story)
             
-            self.logger.info(f"Created metadata PDF document: {output_path}")
-            return output_path
+            # Generate storage path
+            storage_path = self.storage_service.generate_storage_path(user_id, book_id, 'metadata.pdf')
             
+            # Upload to Supabase Storage
+            public_url = self.storage_service.upload_file(temp_pdf_path, storage_path)
+            
+            self.logger.info(f"Created and uploaded metadata PDF document: {public_url}")
+            return public_url
+            
+        except SupabaseStorageError as e:
+            self.logger.error(f"Failed to upload metadata PDF to storage: {str(e)}")
+            raise MetadataGenerationError(f"Metadata PDF upload failed: {str(e)}") from e
         except Exception as e:
             self.logger.error(f"Failed to create metadata PDF: {str(e)}")
             raise MetadataGenerationError(f"Metadata PDF creation failed: {str(e)}") from e
+        finally:
+            # Clean up temporary file
+            if temp_pdf_path:
+                self.storage_service.cleanup_temp_file(temp_pdf_path)
     
     def format_metadata_for_kdp(self, metadata: BookMetadata, book_title: str, author: str) -> Dict[str, Any]:
         """
