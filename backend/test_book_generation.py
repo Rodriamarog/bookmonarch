@@ -15,6 +15,8 @@ from models.book_models import BookData, BookOutline, Chapter, ChapterSummary
 from services.outline_generator_service import OutlineGeneratorService
 from services.chapter_generator_service import ChapterGeneratorService
 from services.pdf_generator_service import PDFGeneratorService
+from services.epub_generator_service import EPUBGeneratorService
+from services.metadata_generator_service import MetadataGeneratorService
 from utils.logging_config import setup_logging
 from config import Config
 
@@ -35,6 +37,8 @@ class BookGenerationTester:
         self.outline_service = OutlineGeneratorService()
         self.chapter_service = ChapterGeneratorService()
         self.pdf_service = PDFGeneratorService()
+        self.epub_service = EPUBGeneratorService()
+        self.metadata_service = MetadataGeneratorService()
         
         logger.info("BookGenerationTester initialized")
     
@@ -70,10 +74,11 @@ class BookGenerationTester:
             chapters=chapters
         )
         
-        # Step 4: Generate PDF
+        # Step 4: Generate PDF and EPUB
         pdf_path = self._generate_pdf(book_data, cache_key)
+        epub_path = self._generate_epub(book_data, cache_key)
         
-        logger.info(f"Full book generation test completed. PDF: {pdf_path}")
+        logger.info(f"Full book generation test completed. PDF: {pdf_path}, EPUB: {epub_path}")
         return pdf_path
     
     def test_outline_only(self, book_title: str, use_cache: bool = True) -> BookOutline:
@@ -167,6 +172,87 @@ class BookGenerationTester:
         
         # Generate PDF
         return self.pdf_service.create_book_pdf(book_data, str(pdf_path))
+    
+    def _generate_epub(self, book_data: BookData, cache_key: str) -> str:
+        """Generate EPUB from book data."""
+        logger.info("Generating EPUB...")
+        
+        # Create output filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        epub_filename = f"{cache_key}_{timestamp}.epub"
+        epub_path = self.cache_dir / "epubs" / epub_filename
+        
+        # Ensure EPUB directory exists
+        epub_path.parent.mkdir(exist_ok=True)
+        
+        # Generate EPUB
+        return self.epub_service.create_book_epub(book_data, str(epub_path))
+    
+    def test_epub_only(self, book_title: str, author: str) -> str:
+        """Test EPUB generation only (requires cached outline and chapters)."""
+        logger.info(f"Testing EPUB generation for '{book_title}'")
+        
+        cache_key = self._create_cache_key(book_title, author)
+        
+        # Load from cache
+        outline = self._load_outline_from_cache(cache_key)
+        chapters = self._load_chapters_from_cache(cache_key)
+        
+        if not outline or not chapters:
+            logger.error("No cached data found. Run full generation first.")
+            return ""
+        
+        book_data = BookData(
+            title=book_title,
+            author=author,
+            book_type="non-fiction",
+            outline=outline,
+            chapters=chapters
+        )
+        
+        return self._generate_epub(book_data, cache_key)
+    
+    def test_metadata_only(self, book_title: str, author: str) -> str:
+        """Test metadata generation only (requires cached outline and chapters)."""
+        logger.info(f"Testing metadata generation for '{book_title}'")
+        
+        cache_key = self._create_cache_key(book_title, author)
+        
+        # Load from cache
+        outline = self._load_outline_from_cache(cache_key)
+        chapters = self._load_chapters_from_cache(cache_key)
+        
+        if not outline or not chapters:
+            logger.error("No cached data found. Run full generation first.")
+            return ""
+        
+        book_data = BookData(
+            title=book_title,
+            author=author,
+            book_type="non-fiction",
+            outline=outline,
+            chapters=chapters
+        )
+        
+        # Generate content summary
+        content_summary = self.metadata_service.create_content_summary(book_data)
+        
+        # Generate metadata
+        metadata = self.metadata_service.generate_book_metadata(book_title, author, content_summary)
+        
+        # Create metadata PDF document
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        metadata_filename = f"{cache_key}_metadata_{timestamp}.pdf"
+        metadata_path = self.cache_dir / "metadata" / metadata_filename
+        
+        # Ensure metadata directory exists
+        metadata_path.parent.mkdir(exist_ok=True)
+        
+        # Generate metadata PDF
+        self.metadata_service.create_metadata_document(metadata, book_title, author, str(metadata_path))
+        
+        logger.info(f"Metadata PDF document saved to: {metadata_path}")
+        return str(metadata_path)
     
     def _create_cache_key(self, book_title: str, author: str) -> str:
         """Create a cache key from book title and author."""
@@ -406,14 +492,16 @@ def main():
     print("="*60)
     
     print("\nAvailable test options:")
-    print("1. Full generation (outline + chapters + PDF)")
+    print("1. Full generation (outline + chapters + PDF + EPUB)")
     print("2. Outline only")
     print("3. Chapters only (requires cached outline)")
     print("4. PDF only (requires cached outline + chapters)")
-    print("5. List cached books")
-    print("6. Clear cache")
+    print("5. EPUB only (requires cached outline + chapters)")
+    print("6. Metadata only (requires cached outline + chapters)")
+    print("7. List cached books")
+    print("8. Clear cache")
     
-    choice = input("\nEnter your choice (1-6): ").strip()
+    choice = input("\nEnter your choice (1-8): ").strip()
     
     try:
         if choice == "1":
@@ -446,9 +534,35 @@ def main():
                 print(f"PDF info: {pdf_info}")
             
         elif choice == "5":
-            tester.list_cached_books()
+            print(f"\nTesting EPUB generation for '{book_title}'...")
+            epub_path = tester.test_epub_only(book_title, author)
+            if epub_path:
+                print(f"✅ EPUB generated successfully: {epub_path}")
+                epub_info = tester.epub_service.get_epub_info(epub_path)
+                print(f"EPUB info: {epub_info}")
             
         elif choice == "6":
+            print(f"\nTesting metadata generation for '{book_title}'...")
+            metadata_path = tester.test_metadata_only(book_title, author)
+            if metadata_path:
+                print(f"✅ Metadata generated successfully: {metadata_path}")
+                # Show metadata summary
+                book_data = BookData(
+                    title=book_title,
+                    author=author,
+                    book_type="non-fiction",
+                    outline=tester._load_outline_from_cache(tester._create_cache_key(book_title, author)),
+                    chapters=tester._load_chapters_from_cache(tester._create_cache_key(book_title, author))
+                )
+                content_summary = tester.metadata_service.create_content_summary(book_data)
+                metadata = tester.metadata_service.generate_book_metadata(book_title, author, content_summary)
+                print("\nMetadata summary:")
+                print(tester.metadata_service.get_generation_summary(metadata))
+            
+        elif choice == "7":
+            tester.list_cached_books()
+            
+        elif choice == "8":
             cache_key = input("Enter cache key to clear (or press Enter for all): ").strip()
             if not cache_key:
                 cache_key = None

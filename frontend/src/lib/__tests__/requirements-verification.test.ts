@@ -1,349 +1,480 @@
 /**
- * Requirements Verification Tests for PDF Formatting Improvements
+ * Requirements Verification Tests
  * 
- * These tests verify that all requirements from the spec are met:
- * - Consistent font styling throughout the document
- * - Proper markdown formatting (bold/italic instead of raw asterisks)
- * - Proper text indentation and spacing
- * - Consistent chapter title formatting
- * - Accurate table of contents
+ * These tests verify that the structured content generation system meets
+ * all the requirements specified in the task.
+ * 
+ * Requirements tested: 3.1, 3.2, 3.3, 3.4
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { 
-  parseMarkdownText, 
-  createMarkdownProcessor,
-  type FormattedTextSegment 
-} from '../markdownProcessor'
-import { 
-  createFontManager,
-  type FontManager 
-} from '../fontManager'
-import { 
-  createTextRenderer,
-  type TextRenderer 
-} from '../textRenderer'
-import { generatePDF, type BookData } from '../fileGeneration'
+import { describe, it, expect } from 'vitest'
+import {
+  StructuredBookContent,
+  validateStructuredBookContent,
+  StructuredContentValidationError,
+  countWordsInStructuredContent
+} from '../structuredContent'
+import {
+  createStructuredBookPrompt,
+  createStructuredChapterPrompt,
+  createRegenerationPrompt,
+  extractJSONFromResponse,
+  validateJSONStructure,
+  StructuredBookGenerationRequest
+} from '../structuredPrompts'
+import { fail } from 'assert'
 
-// Mock jsPDF for testing
-vi.mock('jspdf', () => {
-  return {
-    default: vi.fn().mockImplementation(() => ({
-      setFontSize: vi.fn(),
-      setFont: vi.fn(),
-      text: vi.fn(),
-      getTextWidth: vi.fn().mockReturnValue(50),
-      splitTextToSize: vi.fn().mockImplementation((text: string) => [text]),
-      addPage: vi.fn(),
-      output: vi.fn().mockReturnValue(new ArrayBuffer(1000))
-    }))
-  }
-})
-
-describe('Requirements Verification Tests', () => {
-  describe('Requirement 1: Consistent font styling throughout the document', () => {
-    let fontManager: FontManager
-    let mockPdf: any
-
-    beforeEach(() => {
-      fontManager = createFontManager()
-      mockPdf = {
-        setFontSize: vi.fn(),
-        setFont: vi.fn()
-      }
-    })
-
-    it('should maintain consistent font family across all text', () => {
-      // Test various font combinations
-      fontManager.setConsistentFont(mockPdf, 12, false, false)
-      fontManager.setConsistentFont(mockPdf, 14, true, false)
-      fontManager.setConsistentFont(mockPdf, 16, false, true)
-      fontManager.setConsistentFont(mockPdf, 18, true, true)
-
-      // All calls should use 'times' font family
-      expect(mockPdf.setFont).toHaveBeenCalledWith('times', 'normal')
-      expect(mockPdf.setFont).toHaveBeenCalledWith('times', 'bold')
-      expect(mockPdf.setFont).toHaveBeenCalledWith('times', 'italic')
-      expect(mockPdf.setFont).toHaveBeenCalledWith('times', 'bolditalic')
-    })
-
-    it('should prevent font variations between paragraphs', () => {
-      // Set initial font
-      fontManager.setConsistentFont(mockPdf, 11, false, false)
-      mockPdf.setFont.mockClear()
-
-      // Setting same font again should not call PDF methods
-      fontManager.setConsistentFont(mockPdf, 11, false, false)
-      expect(mockPdf.setFont).not.toHaveBeenCalled()
-    })
-
-    it('should maintain font consistency across page breaks', () => {
-      const currentState = fontManager.getCurrentFontState()
-      
-      expect(currentState.family).toBe('times')
-      expect(currentState.style).toBe('normal')
-    })
-  })
-
-  describe('Requirement 2: Proper markdown formatting rendering', () => {
-    it('should render italic text for *text* markdown', () => {
-      const segments = parseMarkdownText('This is *italic* text')
-      
-      expect(segments).toHaveLength(3)
-      expect(segments[0]).toEqual({
-        text: 'This is ',
-        isBold: false,
-        isItalic: false
-      })
-      expect(segments[1]).toEqual({
-        text: 'italic',
-        isBold: false,
-        isItalic: true
-      })
-      expect(segments[2]).toEqual({
-        text: ' text',
-        isBold: false,
-        isItalic: false
-      })
-    })
-
-    it('should render bold text for **text** markdown', () => {
-      const segments = parseMarkdownText('This is **bold** text')
-      
-      expect(segments).toHaveLength(3)
-      expect(segments[1]).toEqual({
-        text: 'bold',
-        isBold: true,
-        isItalic: false
-      })
-    })
-
-    it('should render bold italic text for ***text*** markdown', () => {
-      const segments = parseMarkdownText('This is ***bold italic*** text')
-      
-      expect(segments).toHaveLength(3)
-      expect(segments[1]).toEqual({
-        text: 'bold italic',
-        isBold: true,
-        isItalic: true
-      })
-    })
-
-    it('should not show raw asterisks in final output', () => {
-      const segments = parseMarkdownText('Game *Pong* was revolutionary')
-      
-      // Should not contain any segments with raw asterisks
-      const hasRawAsterisks = segments.some(segment => 
-        segment.text.includes('*') && !segment.isBold && !segment.isItalic
-      )
-      expect(hasRawAsterisks).toBe(false)
-      
-      // Should have properly formatted italic text
-      const italicSegment = segments.find(segment => segment.isItalic)
-      expect(italicSegment).toBeDefined()
-      expect(italicSegment?.text).toBe('Pong')
-    })
-
-    it('should handle complex markdown combinations', () => {
-      const segments = parseMarkdownText('Text with *italic*, **bold**, and ***bold italic*** formatting')
-      
-      const italicSegment = segments.find(segment => segment.isItalic && !segment.isBold)
-      const boldSegment = segments.find(segment => segment.isBold && !segment.isItalic)
-      const boldItalicSegment = segments.find(segment => segment.isBold && segment.isItalic)
-      
-      expect(italicSegment?.text).toBe('italic')
-      expect(boldSegment?.text).toBe('bold')
-      expect(boldItalicSegment?.text).toBe('bold italic')
-    })
-  })
-
-  describe('Requirement 3: Proper text indentation and spacing', () => {
-    let textRenderer: TextRenderer
-    let mockPdf: any
-
-    beforeEach(() => {
-      textRenderer = createTextRenderer({
-        lineHeight: 16,
-        paragraphSpacing: 12,
-        indentSize: 20,
-        defaultFontSize: 11
-      })
-      mockPdf = {
-        setFontSize: vi.fn(),
-        setFont: vi.fn(),
-        text: vi.fn(),
-        getTextWidth: vi.fn().mockReturnValue(50)
-      }
-    })
-
-    it('should apply consistent paragraph indentation', () => {
-      const initialY = 100
-      const newY = textRenderer.renderParagraph(mockPdf, 'Test paragraph', 50, initialY, 300, true)
-      
-      // Should have advanced Y position (paragraph rendered)
-      expect(newY).toBeGreaterThan(initialY)
-      
-      // Text should be rendered (indented)
-      expect(mockPdf.text).toHaveBeenCalled()
-    })
-
-    it('should provide appropriate spacing between paragraphs', () => {
-      const spacing = textRenderer.getParagraphSpacing()
-      expect(spacing).toBe(12) // As configured
-    })
-
-    it('should handle proper spacing from chapter titles', () => {
-      const lineHeight = textRenderer.getLineHeight()
-      expect(lineHeight).toBe(16) // As configured
-    })
-  })
-
-  describe('Requirement 4: Consistent chapter title formatting', () => {
-    it('should format chapter titles consistently', () => {
-      const processor = createMarkdownProcessor()
-      const segments = processor.parseMarkdown('Chapter 1: The Beginning')
-      
-      // Chapter titles should be parsed as plain text (no markdown in titles)
-      expect(segments).toHaveLength(1)
-      expect(segments[0].text).toBe('Chapter 1: The Beginning')
-    })
-  })
-
-  describe('Requirement 5: Accurate table of contents', () => {
-    it('should list all chapters with correct titles', () => {
-      const bookData: BookData = {
+describe('Requirements Verification', () => {
+  describe('Requirement 3.1: AI prompts force structured JSON output instead of markdown', () => {
+    it('should create prompts that explicitly request JSON format', () => {
+      const request: StructuredBookGenerationRequest = {
         title: 'Test Book',
         author: 'Test Author',
-        genre: 'Test Genre',
-        plotSummary: 'Test summary',
-        chapterTitles: [
-          'Chapter 1: Introduction',
-          'Chapter 2: Development',
-          'Chapter 3: Conclusion'
-        ],
-        chapters: {
-          1: 'Introduction content',
-          2: 'Development content',
-          3: 'Conclusion content'
-        },
-        metadata: {
-          totalWords: 1000,
-          totalChapters: 3,
-          generatedAt: new Date().toISOString()
-        }
+        bookType: 'Fiction',
+        structuredOutput: true
       }
 
-      // Verify all chapter titles are present
-      expect(bookData.chapterTitles).toHaveLength(3)
-      expect(bookData.chapterTitles[0]).toBe('Chapter 1: Introduction')
-      expect(bookData.chapterTitles[1]).toBe('Chapter 2: Development')
-      expect(bookData.chapterTitles[2]).toBe('Chapter 3: Conclusion')
-    })
-  })
+      const prompt = createStructuredBookPrompt(request)
 
-  describe('Integration Tests: Complete PDF Generation', () => {
-    it('should generate PDF with all formatting improvements', async () => {
-      const bookData: BookData = {
-        title: 'Ultimate Guide To Gaming',
-        author: 'Smith',
-        genre: 'Non-fiction',
-        plotSummary: 'A comprehensive guide to gaming with *italic* and **bold** text.',
-        chapterTitles: [
-          'Pixels to Polygons: The Genesis of Interactive Entertainment',
-          'The Console Wars: A History of Gaming Hardware'
-        ],
-        chapters: {
-          1: 'The glow of a cathode-ray tube, the rhythmic click of a joystick, the triumphant fanfare of a synthesized melody – these are the sensory touchstones that define the dawn of a new era. *Pong* was a masterclass in minimalist design.',
-          2: 'From the flickering pixels of *Pong* in dimly lit arcades to the immersive, photorealistic worlds we explore today, the journey of video games is a story of relentless innovation and passionate rivalry.'
-        },
-        metadata: {
-          totalWords: 15000,
-          totalChapters: 2,
-          generatedAt: new Date().toISOString()
-        }
-      }
-
-      // Should generate PDF without errors
-      const pdfBuffer = await generatePDF(bookData)
-      
-      expect(pdfBuffer).toBeInstanceOf(Buffer)
-      expect(pdfBuffer.length).toBeGreaterThan(0)
+      // Verify prompt explicitly requests JSON
+      expect(prompt).toContain('JSON object')
+      expect(prompt).toContain('Do not use markdown')
+      expect(prompt).toContain('Return only the raw JSON')
+      expect(prompt).toContain('Do not use markdown code blocks')
+      expect(prompt).toContain('REQUIRED JSON STRUCTURE')
     })
 
-    it('should handle books with extensive markdown formatting', async () => {
-      const bookData: BookData = {
-        title: 'Markdown Test Book',
+    it('should create chapter prompts that request JSON format', () => {
+      const prompt = createStructuredChapterPrompt({}, 1, 'Test Chapter')
+
+      expect(prompt).toContain('JSON object')
+      expect(prompt).toContain('Return only the JSON object')
+      expect(prompt).toContain('REQUIRED JSON STRUCTURE')
+    })
+
+    it('should include specific instructions against markdown formatting', () => {
+      const request: StructuredBookGenerationRequest = {
+        title: 'Test Book',
         author: 'Test Author',
-        genre: 'Technical',
-        plotSummary: 'A book to test **bold**, *italic*, and ***bold italic*** formatting.',
-        chapterTitles: ['Test Chapter'],
-        chapters: {
-          1: 'This chapter contains *italic text*, **bold text**, ***bold italic text***, and regular text. The game *Pong* was revolutionary. **Bold statements** are important. ***Very important*** points need emphasis.'
-        },
-        metadata: {
-          totalWords: 500,
-          totalChapters: 1,
-          generatedAt: new Date().toISOString()
-        }
+        bookType: 'Fiction',
+        structuredOutput: true
       }
 
-      // Should generate PDF without errors despite complex formatting
-      const pdfBuffer = await generatePDF(bookData)
-      
-      expect(pdfBuffer).toBeInstanceOf(Buffer)
-      expect(pdfBuffer.length).toBeGreaterThan(0)
+      const prompt = createStructuredBookPrompt(request)
+
+      expect(prompt).toContain('Do not include any text before or after the JSON object')
+      expect(prompt).toContain('Do not use markdown code blocks')
     })
   })
 
-  describe('Visual Regression Prevention', () => {
-    it('should maintain consistent font state across multiple operations', () => {
-      const fontManager = createFontManager()
-      const mockPdf = {
-        setFontSize: vi.fn(),
-        setFont: vi.fn()
+  describe('Requirement 3.2: Define structured interfaces for content', () => {
+    it('should define StructuredBookContent interface with all required fields', () => {
+      const validContent: StructuredBookContent = {
+        title: 'Test Book',
+        author: 'Test Author',
+        genre: 'Fiction',
+        plotSummary: 'A test story',
+        chapters: [
+          {
+            number: 1,
+            title: 'Chapter 1',
+            paragraphs: [
+              {
+                text: 'Test paragraph',
+                formatting: [
+                  {
+                    start: 0,
+                    end: 4,
+                    type: 'bold',
+                    text: 'Test'
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       }
 
-      // Simulate multiple font changes as would occur in PDF generation
-      fontManager.setConsistentFont(mockPdf, 24, true, false) // Title
-      fontManager.setConsistentFont(mockPdf, 16, false, true) // Author
-      fontManager.setConsistentFont(mockPdf, 18, true, false) // TOC Header
-      fontManager.setConsistentFont(mockPdf, 12, false, false) // TOC Entries
-      fontManager.setConsistentFont(mockPdf, 16, true, false) // Chapter Title
-      fontManager.setConsistentFont(mockPdf, 11, false, false) // Body Text
-      fontManager.setConsistentFont(mockPdf, 11, false, true) // Italic Text
-      fontManager.setConsistentFont(mockPdf, 11, true, false) // Bold Text
-
-      // All font calls should use consistent family
-      const fontCalls = mockPdf.setFont.mock.calls
-      fontCalls.forEach(call => {
-        expect(call[0]).toBe('times') // First argument should always be 'times'
-      })
+      // Should validate without errors
+      expect(() => validateStructuredBookContent(validContent)).not.toThrow()
     })
 
-    it('should handle edge cases in markdown processing', () => {
-      // Test various edge cases that could cause formatting issues
-      const testCases = [
-        'Text with *unclosed italic',
-        'Text with **unclosed bold',
-        'Text with ***unclosed bold italic',
-        'Text with * single asterisk',
-        'Text with ** double asterisk',
-        'Text with *** triple asterisk',
-        'Text with *empty* formatting',
-        'Text with **empty** formatting',
-        'Text with ***empty*** formatting'
+    it('should enforce structured chapter format', () => {
+      const invalidContent = {
+        title: 'Test Book',
+        author: 'Test Author',
+        genre: 'Fiction',
+        plotSummary: 'A test story',
+        chapters: [
+          {
+            // Missing required fields
+            paragraphs: []
+          }
+        ]
+      }
+
+      expect(() => validateStructuredBookContent(invalidContent)).toThrow(StructuredContentValidationError)
+    })
+
+    it('should enforce structured paragraph format with precise formatting positions', () => {
+      const invalidContent = {
+        title: 'Test Book',
+        author: 'Test Author',
+        genre: 'Fiction',
+        plotSummary: 'A test story',
+        chapters: [
+          {
+            number: 1,
+            title: 'Chapter 1',
+            paragraphs: [
+              {
+                text: 'Test paragraph',
+                formatting: [
+                  {
+                    start: 0,
+                    end: 20, // Exceeds text length
+                    type: 'bold',
+                    text: 'Wrong text'
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+
+      expect(() => validateStructuredBookContent(invalidContent)).toThrow(StructuredContentValidationError)
+    })
+  })
+
+  describe('Requirement 3.3: Implement content validation for proper JSON structure', () => {
+    it('should validate complete book content structure', () => {
+      const validContent: StructuredBookContent = {
+        title: 'Test Book',
+        author: 'Test Author',
+        genre: 'Fiction',
+        plotSummary: 'A compelling story about testing.',
+        chapters: [
+          {
+            number: 1,
+            title: 'The Beginning',
+            paragraphs: [
+              {
+                text: 'This is the first paragraph with some bold text.',
+                formatting: [
+                  {
+                    start: 38,
+                    end: 42,
+                    type: 'bold',
+                    text: 'bold'
+                  }
+                ]
+              },
+              {
+                text: 'This is the second paragraph with italic text.',
+                formatting: [
+                  {
+                    start: 34,
+                    end: 40,
+                    type: 'italic',
+                    text: 'italic'
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+
+      const result = validateStructuredBookContent(validContent)
+      expect(result).toBeDefined()
+      expect(result.title).toBe('Test Book')
+      expect(result.chapters).toHaveLength(1)
+      expect(result.chapters[0].paragraphs).toHaveLength(2)
+    })
+
+    it('should provide detailed validation errors with field information', () => {
+      const invalidContent = {
+        title: '', // Invalid: empty string
+        author: 'Test Author',
+        genre: 'Fiction',
+        plotSummary: 'A test story',
+        chapters: []
+      }
+
+      try {
+        validateStructuredBookContent(invalidContent)
+        fail('Should have thrown validation error')
+      } catch (error) {
+        expect(error).toBeInstanceOf(StructuredContentValidationError)
+        const validationError = error as StructuredContentValidationError
+        expect(validationError.field).toBe('title')
+        expect(validationError.message).toContain('non-empty string')
+      }
+    })
+
+    it('should validate formatting positions precisely', () => {
+      const content = {
+        title: 'Test Book',
+        author: 'Test Author',
+        genre: 'Fiction',
+        plotSummary: 'A test story',
+        chapters: [
+          {
+            number: 1,
+            title: 'Chapter 1',
+            paragraphs: [
+              {
+                text: 'Hello world',
+                formatting: [
+                  {
+                    start: 0,
+                    end: 5,
+                    type: 'bold',
+                    text: 'Hello' // Correct text
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+
+      expect(() => validateStructuredBookContent(content)).not.toThrow()
+
+      // Now test with incorrect text
+      content.chapters[0].paragraphs[0].formatting[0].text = 'Wrong'
+      expect(() => validateStructuredBookContent(content)).toThrow(StructuredContentValidationError)
+    })
+
+    it('should count words accurately in structured content', () => {
+      const content: StructuredBookContent = {
+        title: 'Test Book',
+        author: 'Test Author',
+        genre: 'Fiction',
+        plotSummary: 'A test story',
+        chapters: [
+          {
+            number: 1,
+            title: 'Chapter 1',
+            paragraphs: [
+              {
+                text: 'This paragraph has exactly five words.',
+                formatting: []
+              },
+              {
+                text: 'This second paragraph has six words total.',
+                formatting: []
+              }
+            ]
+          }
+        ]
+      }
+
+      const wordCount = countWordsInStructuredContent(content)
+      // "This paragraph has exactly five words." = 6 words (not 5)
+      // "This second paragraph has six words total." = 7 words (not 6)
+      expect(wordCount).toBe(13) // 6 + 7 = 13 words
+    })
+  })
+
+  describe('Requirement 3.4: Add error handling for malformed AI responses with regeneration logic', () => {
+    it('should extract JSON from responses with extra text', () => {
+      const responseWithExtra = `
+        Here is your book content:
+        
+        {"title": "Test Book", "author": "Test Author"}
+        
+        I hope this helps!
+      `
+
+      const extractedJSON = extractJSONFromResponse(responseWithExtra)
+      expect(extractedJSON).toBe('{"title": "Test Book", "author": "Test Author"}')
+      expect(validateJSONStructure(extractedJSON)).toBe(true)
+    })
+
+    it('should extract JSON from responses with markdown code blocks', () => {
+      const responseWithMarkdown = `
+        \`\`\`json
+        {"title": "Test Book", "author": "Test Author"}
+        \`\`\`
+      `
+
+      const extractedJSON = extractJSONFromResponse(responseWithMarkdown)
+      expect(extractedJSON).toBe('{"title": "Test Book", "author": "Test Author"}')
+      expect(validateJSONStructure(extractedJSON)).toBe(true)
+    })
+
+    it('should handle malformed responses gracefully', () => {
+      const malformedResponse = 'This is not JSON at all'
+
+      expect(() => extractJSONFromResponse(malformedResponse)).toThrow('No JSON object found in response')
+    })
+
+    it('should create regeneration prompts with specific error information', () => {
+      const originalPrompt = 'Generate a book with proper JSON structure'
+      const errors = [
+        'Missing title field',
+        'Invalid formatting positions in chapter 1',
+        'Chapter numbers are not sequential'
+      ]
+      const previousAttempt = '{"invalid": "structure"}'
+
+      const regenPrompt = createRegenerationPrompt(originalPrompt, errors, previousAttempt)
+
+      expect(regenPrompt).toContain(originalPrompt)
+      expect(regenPrompt).toContain('Missing title field')
+      expect(regenPrompt).toContain('Invalid formatting positions in chapter 1')
+      expect(regenPrompt).toContain('Chapter numbers are not sequential')
+      expect(regenPrompt).toContain('PREVIOUS FAILED ATTEMPT')
+      expect(regenPrompt).toContain('{"invalid"')
+    })
+
+    it('should provide specific instructions for fixing common issues', () => {
+      const regenPrompt = createRegenerationPrompt('original', ['test error'])
+
+      expect(regenPrompt).toContain('Return ONLY valid JSON')
+      expect(regenPrompt).toContain('Double-check all formatting position calculations')
+      expect(regenPrompt).toContain('Ensure all required fields are present')
+      expect(regenPrompt).toContain('Verify JSON syntax is correct')
+      expect(regenPrompt).toContain('no trailing commas')
+      expect(regenPrompt).toContain('proper escaping')
+    })
+
+    it('should validate JSON structure correctly', () => {
+      // Valid JSON objects
+      expect(validateJSONStructure('{}')).toBe(true)
+      expect(validateJSONStructure('{"title": "Test"}')).toBe(true)
+      expect(validateJSONStructure('{"nested": {"key": "value"}}')).toBe(true)
+
+      // Invalid JSON
+      expect(validateJSONStructure('{"invalid": "json",}')).toBe(false) // trailing comma
+      expect(validateJSONStructure('{"missing": "quote}')).toBe(false) // syntax error
+      expect(validateJSONStructure('"just a string"')).toBe(false) // not an object
+      expect(validateJSONStructure('123')).toBe(false) // not an object
+      expect(validateJSONStructure('null')).toBe(false) // not an object
+    })
+  })
+
+  describe('Integration: Complete Workflow', () => {
+    it('should support the complete structured content generation workflow', () => {
+      // 1. Create a structured prompt
+      const request: StructuredBookGenerationRequest = {
+        title: 'Integration Test Book',
+        author: 'Test Author',
+        bookType: 'Mystery',
+        writingStyle: 'Suspenseful and engaging',
+        structuredOutput: true,
+        targetChapters: 2,
+        targetWordsPerChapter: 100
+      }
+
+      const prompt = createStructuredBookPrompt(request)
+      expect(prompt).toContain('Integration Test Book')
+      expect(prompt).toContain('Mystery')
+      expect(prompt).toContain('Suspenseful and engaging')
+
+      // 2. Simulate AI response (with markdown that needs cleaning)
+      const mockAIResponse = `
+        Here's your book:
+        \`\`\`json
+        {
+          "title": "Integration Test Book",
+          "author": "Test Author",
+          "genre": "Mystery",
+          "plotSummary": "A thrilling mystery about testing software systems.",
+          "chapters": [
+            {
+              "number": 1,
+              "title": "The Bug Appears",
+              "paragraphs": [
+                {
+                  "text": "The mysterious bug appeared suddenly in the code.",
+                  "formatting": [
+                    {
+                      "start": 4,
+                      "end": 14,
+                      "type": "italic",
+                      "text": "mysterious"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+        \`\`\`
+      `
+
+      // 3. Extract and validate JSON
+      const extractedJSON = extractJSONFromResponse(mockAIResponse)
+      expect(validateJSONStructure(extractedJSON)).toBe(true)
+
+      // 4. Parse and validate structured content
+      const parsedContent = JSON.parse(extractedJSON)
+      const validatedContent = validateStructuredBookContent(parsedContent)
+
+      expect(validatedContent.title).toBe('Integration Test Book')
+      expect(validatedContent.author).toBe('Test Author')
+      expect(validatedContent.genre).toBe('Mystery')
+      expect(validatedContent.chapters).toHaveLength(1)
+      expect(validatedContent.chapters[0].title).toBe('The Bug Appears')
+      expect(validatedContent.chapters[0].paragraphs[0].formatting).toHaveLength(1)
+      expect(validatedContent.chapters[0].paragraphs[0].formatting[0].type).toBe('italic')
+
+      // 5. Verify word count functionality
+      const wordCount = countWordsInStructuredContent(validatedContent)
+      expect(wordCount).toBeGreaterThan(0)
+    })
+
+    it('should handle error recovery workflow', () => {
+      // 1. Simulate malformed AI response
+      const malformedResponse = `
+        {
+          "title": "Test Book",
+          "author": "Test Author",
+          // Missing required fields and has comments (invalid JSON)
+          "chapters": [
+            {
+              "number": 1,
+              "paragraphs": [
+                {
+                  "text": "Test",
+                  "formatting": [
+                    {
+                      "start": 0,
+                      "end": 10, // Invalid: exceeds text length
+                      "type": "bold",
+                      "text": "Wrong text"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      `
+
+      // 2. Attempt to extract JSON (will succeed but parsing will fail due to comments)
+      const extractedJSON = extractJSONFromResponse(malformedResponse)
+      expect(() => JSON.parse(extractedJSON)).toThrow() // Should fail due to comments in JSON
+
+      // 3. Create regeneration prompt with specific errors
+      const originalPrompt = 'Generate a structured book'
+      const errors = [
+        'Invalid JSON syntax (contains comments)',
+        'Missing required genre field',
+        'Missing required plotSummary field',
+        'Chapter missing title field',
+        'Formatting positions exceed text length'
       ]
 
-      testCases.forEach(testCase => {
-        const segments = parseMarkdownText(testCase)
-        
-        // Should not throw errors
-        expect(segments).toBeDefined()
-        expect(Array.isArray(segments)).toBe(true)
-        
-        // Should have at least one segment
-        expect(segments.length).toBeGreaterThan(0)
-      })
+      const regenPrompt = createRegenerationPrompt(originalPrompt, errors, malformedResponse)
+
+      expect(regenPrompt).toContain('Invalid JSON syntax')
+      expect(regenPrompt).toContain('Missing required genre field')
+      expect(regenPrompt).toContain('Formatting positions exceed text length')
+      expect(regenPrompt).toContain('CRITICAL REMINDERS')
     })
   })
 })

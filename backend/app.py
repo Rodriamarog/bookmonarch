@@ -27,6 +27,8 @@ book_controller = BookGenerationController()
 # Register routes
 app.add_url_rule('/', 'index', book_controller.index, methods=['GET'])
 app.add_url_rule('/generate', 'generate_book', book_controller.generate_book, methods=['POST'])
+app.add_url_rule('/progress', 'progress', book_controller.progress, methods=['GET'])
+app.add_url_rule('/results', 'results', book_controller.results, methods=['GET'])
 app.add_url_rule('/download/<filename>', 'download_file', book_controller.download_file, methods=['GET'])
 
 if __name__ == '__main__':

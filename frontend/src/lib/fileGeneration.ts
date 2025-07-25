@@ -147,9 +147,45 @@ export async function generateDOCX(bookData: BookData): Promise<Buffer> {
   return await Packer.toBuffer(doc)
 }
 
-// Generate PDF file with 5x8 inch page size
+// Generate PDF file using LaTeX-based professional typesetting
 export async function generatePDF(bookData: BookData): Promise<Buffer> {
-  // Import the new formatting utilities
+  // Import the LaTeX-based PDF generation system
+  const { createBookPDFCompiler } = await import('./pdfCompiler')
+  const { convertBookDataToStructuredContent } = await import('./structuredContent')
+  
+  console.log('Converting BookData to StructuredBookContent for LaTeX processing...')
+  
+  // Convert the BookData format to StructuredBookContent
+  const structuredContent = convertBookDataToStructuredContent(bookData)
+  
+  console.log('Creating LaTeX PDF compiler...')
+  
+  // Create a book-optimized PDF compiler
+  const pdfCompiler = createBookPDFCompiler()
+  
+  console.log('Compiling structured content to PDF using LaTeX...')
+  
+  // Compile the structured content to PDF
+  const compilationResult = await pdfCompiler.compileBookToPDF(structuredContent)
+  
+  if (!compilationResult.success || !compilationResult.pdfBuffer) {
+    console.error('LaTeX PDF compilation failed:', compilationResult.errors)
+    throw new Error(`PDF compilation failed: ${compilationResult.errors.map(e => e.message).join(', ')}`)
+  }
+  
+  console.log(`LaTeX PDF generated successfully: ${compilationResult.outputSize} bytes in ${compilationResult.compilationTime}ms`)
+  
+  // Log any warnings
+  if (compilationResult.warnings.length > 0) {
+    console.warn('LaTeX compilation warnings:', compilationResult.warnings)
+  }
+  
+  return compilationResult.pdfBuffer
+}
+
+// Fallback jsPDF implementation (kept for backward compatibility)
+async function generatePDFWithJsPDF(bookData: BookData): Promise<Buffer> {
+  // Import the legacy formatting utilities
   const { createFontManager } = await import('./fontManager')
   const { createTextRenderer } = await import('./textRenderer')
   
@@ -169,13 +205,13 @@ export async function generatePDF(bookData: BookData): Promise<Buffer> {
   let yPosition = margin
   let pageNumber = 1
 
-  // Initialize the new formatting systems
+  // Initialize the formatting systems with 12pt body text
   const fontManager = createFontManager()
   const textRenderer = createTextRenderer({
-    lineHeight: 16,
+    lineHeight: 18,
     paragraphSpacing: 12,
     indentSize: 20,
-    defaultFontSize: 11
+    defaultFontSize: 12
   })
 
   // Helper function to add page numbers (except on title page)
@@ -221,22 +257,25 @@ export async function generatePDF(bookData: BookData): Promise<Buffer> {
   addCenteredText('Table of Contents', 18, true)
   yPosition += 20
   
-  // Add chapter titles to TOC with proper text wrapping
+  // Render TOC entries
   bookData.chapterTitles.forEach((title, index) => {
     checkPageBreak()
     
     const chapterNum = index + 1
     const tocEntry = `${chapterNum}. ${title}`
     
-    // Use text renderer to handle long titles properly
-    yPosition = textRenderer.renderParagraph(
-      pdf,
-      tocEntry,
-      margin,
-      yPosition,
-      contentWidth,
-      false // no indentation for TOC
-    )
+    fontManager.setConsistentFont(pdf, 12, false, false)
+    const tocLines = pdf.splitTextToSize(tocEntry, contentWidth)
+    
+    for (const line of tocLines) {
+      if (checkPageBreak()) {
+        // Page break occurred, continue with new page
+      }
+      pdf.text(line, margin, yPosition)
+      yPosition += textRenderer.getLineHeight()
+    }
+    
+    yPosition += 3 // Small spacing between TOC entries
   })
   
   yPosition += 20
@@ -251,10 +290,9 @@ export async function generatePDF(bookData: BookData): Promise<Buffer> {
       pageNumber++
       yPosition = margin + 20
       
-      // Chapter title with proper text wrapping and formatting
+      // Chapter title
       const chapterTitle = bookData.chapterTitles[parseInt(chapterNum) - 1] || `Chapter ${chapterNum}`
       
-      // Use text renderer for chapter titles to handle long titles properly
       fontManager.setConsistentFont(pdf, 16, true, false)
       const titleLines = pdf.splitTextToSize(chapterTitle, contentWidth)
       
@@ -268,10 +306,10 @@ export async function generatePDF(bookData: BookData): Promise<Buffer> {
       
       yPosition += 15 // Extra spacing after chapter title
       
-      // IMPORTANT: Reset font to normal after chapter title to prevent bold bleeding
-      fontManager.setConsistentFont(pdf, 11, false, false)
+      // Reset font to 12pt normal after chapter title
+      fontManager.setConsistentFont(pdf, 12, false, false)
       
-      // Chapter content with enhanced text rendering
+      // Chapter content
       const paragraphs = content.split('\n\n').filter(p => p.trim())
       
       paragraphs.forEach(paragraph => {
@@ -280,12 +318,12 @@ export async function generatePDF(bookData: BookData): Promise<Buffer> {
         // Skip if paragraph starts with chapter number (avoid duplication)
         if (!cleanParagraph.toLowerCase().startsWith(`chapter ${chapterNum}`)) {
           // Check if we need a page break before rendering the paragraph
-          const estimatedLines = Math.ceil(cleanParagraph.length / 80) // Rough estimate
+          const estimatedLines = Math.ceil(cleanParagraph.length / 80)
           if (checkPageBreak(estimatedLines + 1)) {
             // Page break occurred, continue with new page
           }
           
-          // Use the enhanced text renderer for proper markdown formatting
+          // Use the text renderer for proper formatting
           yPosition = textRenderer.renderParagraph(
             pdf,
             cleanParagraph,
@@ -367,18 +405,42 @@ export function extractBookData(contentUrl: string): BookData | null {
   try {
     const bookContent = JSON.parse(contentUrl)
     
-    if (bookContent.completeBook && bookContent.metadata && bookContent.outline) {
+    if (bookContent.completeBook && bookContent.metadata && bookContent.outline && bookContent.structuredChapters) {
+      // Convert structuredChapters array to legacy BookData format
+      const chapters: { [key: number]: string } = {}
+      
+      bookContent.structuredChapters.forEach((chapter: any) => {
+        if (chapter.chapterNumber && chapter.sections) {
+          // Combine all sections into a single chapter content string
+          const chapterContent = chapter.sections
+            .map((section: any) => section.content)
+            .join('\n\n')
+          chapters[chapter.chapterNumber] = chapterContent
+        }
+      })
+      
+      if (Object.keys(chapters).length === 0) {
+        console.error('No valid chapters found in structuredChapters')
+        return null
+      }
+      
       return {
         title: bookContent.outline.title,
         author: bookContent.outline.author,
         genre: bookContent.outline.genre,
         plotSummary: bookContent.outline.plotSummary,
         chapterTitles: bookContent.outline.chapterTitles,
-        chapters: bookContent.chapters,
+        chapters: chapters,
         metadata: bookContent.metadata
       }
     }
     
+    console.error('Missing required properties in book content:', {
+      hasCompleteBook: !!bookContent.completeBook,
+      hasMetadata: !!bookContent.metadata,
+      hasOutline: !!bookContent.outline,
+      hasStructuredChapters: !!bookContent.structuredChapters
+    })
     return null
   } catch (error) {
     console.error('Error extracting book data:', error)

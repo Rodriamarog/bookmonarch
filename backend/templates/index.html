@@ -4,10 +4,11 @@
 <h1>AI Book Generator</h1>
 <p>Generate a professional non-fiction book with AI assistance. Simply enter your book title and author name to get started.</p>
 
-<form method="POST" action="/generate">
+<form method="POST" action="/generate" id="bookForm">
     <div class="form-group">
         <label for="title">Book Title:</label>
-        <input type="text" id="title" name="title" required>
+        <input type="text" id="title" name="title" value="{{ title or '' }}" maxlength="200" required>
+        <small>Maximum 200 characters</small>
         {% if errors and errors.title %}
             <div class="error">{{ errors.title }}</div>
         {% endif %}
@@ -15,7 +16,8 @@
     
     <div class="form-group">
         <label for="author">Author Name:</label>
-        <input type="text" id="author" name="author" required>
+        <input type="text" id="author" name="author" value="{{ author or '' }}" maxlength="100" required>
+        <small>Maximum 100 characters</small>
         {% if errors and errors.author %}
             <div class="error">{{ errors.author }}</div>
         {% endif %}
@@ -26,10 +28,72 @@
         <select id="book_type" name="book_type" required>
             <option value="non-fiction">Non-Fiction</option>
         </select>
+        <small>Currently only non-fiction books are supported</small>
+        {% if errors and errors.book_type %}
+            <div class="error">{{ errors.book_type }}</div>
+        {% endif %}
     </div>
     
-    <button type="submit">Generate Book</button>
+    <button type="submit" id="generateBtn">Generate Book</button>
 </form>
+
+<script>
+document.getElementById('bookForm').addEventListener('submit', function(e) {
+    const title = document.getElementById('title').value.trim();
+    const author = document.getElementById('author').value.trim();
+    const generateBtn = document.getElementById('generateBtn');
+    
+    // Clear previous errors
+    const errors = document.querySelectorAll('.error');
+    errors.forEach(error => error.remove());
+    
+    let hasErrors = false;
+    
+    // Validate title
+    if (!title) {
+        showError('title', 'Book title is required');
+        hasErrors = true;
+    } else if (title.length > 200) {
+        showError('title', 'Book title cannot exceed 200 characters');
+        hasErrors = true;
+    }
+    
+    // Validate author
+    if (!author) {
+        showError('author', 'Author name is required');
+        hasErrors = true;
+    } else if (author.length > 100) {
+        showError('author', 'Author name cannot exceed 100 characters');
+        hasErrors = true;
+    }
+    
+    if (hasErrors) {
+        e.preventDefault();
+        return false;
+    }
+    
+    // Show loading state
+    generateBtn.textContent = 'Starting Generation...';
+    generateBtn.disabled = true;
+    
+    // Show warning about time
+    if (!document.getElementById('timeWarning')) {
+        const warning = document.createElement('div');
+        warning.id = 'timeWarning';
+        warning.style.cssText = 'background-color: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 10px; border-radius: 4px; margin-top: 15px;';
+        warning.innerHTML = '<strong>Please note:</strong> Book generation typically takes 5-10 minutes. You will be redirected to a progress page.';
+        document.getElementById('bookForm').appendChild(warning);
+    }
+});
+
+function showError(fieldId, message) {
+    const field = document.getElementById(fieldId);
+    const error = document.createElement('div');
+    error.className = 'error';
+    error.textContent = message;
+    field.parentNode.appendChild(error);
+}
+</script>
 
 {% if errors and errors.general %}
     <div class="error">{{ errors.general }}</div>

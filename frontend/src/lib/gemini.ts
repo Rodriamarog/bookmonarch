@@ -30,12 +30,19 @@ export interface BookOutline {
   targetWordCount: number
 }
 
+export interface ChapterSection {
+  type: 'opening' | 'body' | 'dialogue' | 'closing'
+  content: string
+}
+
 export interface ChapterContent {
   chapterNumber: number
   title: string
-  content: string
-  wordCount: number
+  subtitle?: string
+  sections: ChapterSection[]
   summary: string
+  keyEvents: string[]
+  wordCount: number
 }
 
 export interface BookGenerationRequest {
@@ -130,18 +137,57 @@ ${previousChaptersSummary}
 
 Ensure this chapter builds naturally on the previous content and maintains narrative continuity.` : ''}
 
-REQUIREMENTS:
+CRITICAL FORMATTING REQUIREMENTS:
+You MUST return your response as a valid JSON object with the exact structure specified below. Do not include any text before or after the JSON object. Do not use markdown code blocks. Return only the raw JSON.
+
+REQUIRED JSON STRUCTURE:
+{
+  "chapterNumber": ${chapterNumber},
+  "title": "${chapterTitle}",
+  "subtitle": "Optional chapter subtitle if appropriate",
+  "sections": [
+    {
+      "type": "opening",
+      "content": "Opening paragraph with **bold text** and *italic text* as needed.\n\nUse standard markdown formatting for emphasis."
+    },
+    {
+      "type": "body", 
+      "content": "Main body content with multiple paragraphs.\n\n**Important points** can be bolded.\n\n*Thoughts or emphasis* can be italicized.\n\n> Quotes can use blockquote format\n\n- Use bullet points when listing items\n- Like this example\n\nThis should be the bulk of the chapter content."
+    },
+    {
+      "type": "dialogue",
+      "content": "\"Character dialogue should be in quotes,\" said the protagonist.\n\n*She thought to herself,* this is how we handle internal thoughts.\n\n\"More dialogue here,\" replied another character."
+    },
+    {
+      "type": "closing",
+      "content": "Closing paragraph that transitions to the next chapter.\n\n**Key revelation** or cliffhanger to maintain reader interest."
+    }
+  ],
+  "summary": "Brief 2-3 sentence summary of what happens in this chapter",
+  "keyEvents": ["Event 1", "Event 2", "Event 3"],
+  "wordCount": 0
+}
+
+MARKDOWN FORMATTING GUIDELINES:
+- Use **bold** for emphasis, important terms, or dramatic moments
+- Use *italics* for thoughts, internal dialogue, or subtle emphasis  
+- Use > for blockquotes or important statements
+- Use - for bullet points when listing items
+- Use standard paragraph breaks (double newline) between paragraphs
+- Keep formatting purposeful and not excessive
+- Ensure all markdown is properly formatted and will render correctly
+
+CONTENT REQUIREMENTS:
 - Write engaging, high-quality content appropriate for the ${outline.genre.toLowerCase()} genre
 - Follow the established writing style and tone
 - Ensure the chapter covers the content described in the chapter summary
-- Ensure the chapter is substantial (800-1200 words)
-- Create a natural flow that connects to the overall book structure
+- Each section should be substantial (200-400 words each)
+- Create natural flow between sections
 - End with a smooth transition that leads to the next chapter
+- Include dialogue and character development where appropriate
+- Maintain narrative continuity with previous chapters
 
-RESPONSE FORMAT:
-Write the complete chapter content as plain text. Do not include chapter numbers or titles in the response - just the chapter content itself.
-
-Begin writing the chapter now:`
+Generate Chapter ${chapterNumber} following these specifications. Return only the JSON object.`
 }
 
 // Error handling for API calls
