@@ -9,12 +9,14 @@ from typing import Dict, Any
 from api import api_bp
 from lib.auth import require_auth, get_current_user_id
 from lib.supabase_storage import SupabaseStorageService, SupabaseStorageError
+from lib.database_service import get_database_service, DatabaseError
 
 
 logger = logging.getLogger(__name__)
 
-# Initialize storage service
+# Initialize services
 storage_service = SupabaseStorageService()
+db_service = get_database_service()
 
 
 @api_bp.route('/book-files/<book_id>', methods=['GET'])
@@ -103,41 +105,62 @@ def delete_book(book_id: str):
     try:
         user_id = get_current_user_id()
         
-        # First, try to delete files from storage
-        files_deleted = storage_service.cleanup_book_files(user_id, book_id)
+        # First, check if book exists and user has access
+        try:
+            book_data = db_service.get_book(book_id, user_id)
+            if not book_data:
+                return jsonify({
+                    'success': False,
+                    'error': 'Book not found',
+                    'code': 'BOOK_NOT_FOUND'
+                }), 404
+        except DatabaseError as e:
+            logger.error(f"Error checking book existence for deletion {book_id}: {str(e)}")
+            return jsonify({
+                'success': False,
+                'error': 'Database error during deletion',
+                'code': 'DATABASE_ERROR',
+                'message': str(e)
+            }), 500
         
-        # TODO: Delete book record from Supabase database
-        # This would be implemented when we have the database integration
-        # For now, we just delete the files
+        # Delete files from storage first
+        files_deleted = False
+        try:
+            files_deleted = storage_service.cleanup_book_files(user_id, book_id)
+            logger.info(f"Storage cleanup completed for book {book_id}: {files_deleted}")
+        except SupabaseStorageError as e:
+            logger.warning(f"Storage cleanup failed for book {book_id}: {str(e)}")
+            # Continue with database deletion even if storage cleanup fails
         
-        if files_deleted:
-            logger.info(f"Successfully deleted book {book_id} and files for user {user_id}")
+        # Delete book record from database
+        try:
+            db_service.delete_book(book_id, user_id)
+            logger.info(f"Successfully deleted book {book_id} from database for user {user_id}")
+            
             return jsonify({
                 'success': True,
                 'book_id': book_id,
-                'message': 'Book and associated files deleted successfully'
+                'message': 'Book and associated files deleted successfully',
+                'details': {
+                    'database_deleted': True,
+                    'files_deleted': files_deleted
+                }
             }), 200
-        else:
-            logger.warning(f"No files found to delete for book {book_id} (user {user_id})")
+            
+        except DatabaseError as e:
+            logger.error(f"Failed to delete book {book_id} from database: {str(e)}")
             return jsonify({
-                'success': True,
-                'book_id': book_id,
-                'message': 'Book deletion completed (no files found)'
-            }), 200
+                'success': False,
+                'error': 'Failed to delete book from database',
+                'code': 'DATABASE_DELETE_ERROR',
+                'message': str(e)
+            }), 500
         
-    except SupabaseStorageError as e:
-        logger.error(f"Storage error deleting book {book_id}: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': 'Storage error during deletion',
-            'code': 'STORAGE_DELETE_ERROR',
-            'message': str(e)
-        }), 500
     except Exception as e:
-        logger.error(f"Error deleting book {book_id}: {str(e)}")
+        logger.error(f"Unexpected error deleting book {book_id}: {str(e)}")
         return jsonify({
             'success': False,
-            'error': 'Failed to delete book',
+            'error': 'Unexpected error during deletion',
             'code': 'DELETE_ERROR',
             'message': str(e)
         }), 500

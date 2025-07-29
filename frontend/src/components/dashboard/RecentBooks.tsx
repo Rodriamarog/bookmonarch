@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { Card, CardHeader, CardTitle, CardContent, Button } from '@/components/ui'
 import { supabase } from '@/lib/supabase'
-import { BookOpen, Download, Clock, CheckCircle, XCircle, Loader } from 'lucide-react'
+import { BookOpen, Download, Clock, CheckCircle, XCircle, Loader, Trash2, FileText, File } from 'lucide-react'
+import useBookManagement from '@/hooks/useBookManagement'
 
 interface Book {
   id: string
@@ -24,6 +25,8 @@ interface RecentBooksProps {
 export function RecentBooks({ userId }: RecentBooksProps) {
   const [books, setBooks] = useState<Book[]>([])
   const [loading, setLoading] = useState(true)
+  const [deletingBooks, setDeletingBooks] = useState<Set<string>>(new Set())
+  const { downloadFile, deleteBook, isLoading: bookManagementLoading, error: bookManagementError } = useBookManagement()
 
   useEffect(() => {
     fetchBooks()
@@ -79,12 +82,51 @@ export function RecentBooks({ userId }: RecentBooksProps) {
     }
   }
 
-  const handleDownload = async (bookId: string, title: string) => {
+  const handleDownload = async (bookId: string, title: string, fileType: 'pdf' | 'epub' | 'metadata') => {
     try {
-      // TODO: Implement download functionality
-      console.log('Download book:', bookId)
+      const extension = fileType === 'metadata' ? 'pdf' : fileType
+      const filename = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.${extension}`
+      await downloadFile(bookId, fileType, filename)
     } catch (error) {
       console.error('Download error:', error)
+      alert(`Failed to download ${fileType.toUpperCase()} file. Please try again.`)
+    }
+  }
+
+  const handleDelete = async (bookId: string, title: string) => {
+    if (!confirm(`Are you sure you want to delete "${title}"? This action cannot be undone.`)) {
+      return
+    }
+
+    setDeletingBooks(prev => new Set(prev).add(bookId))
+
+    try {
+      // Delete using Flask API (which handles both database and storage cleanup)
+      await deleteBook(bookId)
+
+      // Also delete from Supabase database (for backward compatibility)
+      const { error } = await supabase
+        .from('books')
+        .delete()
+        .eq('id', bookId)
+
+      if (error) {
+        console.warn('Supabase deletion warning:', error)
+        // Don't throw error as Flask API deletion is primary
+      }
+
+      // Remove the book from the local state
+      setBooks(prevBooks => prevBooks.filter(book => book.id !== bookId))
+      
+    } catch (error) {
+      console.error('Delete error:', error)
+      alert('Failed to delete book. Please try again.')
+    } finally {
+      setDeletingBooks(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(bookId)
+        return newSet
+      })
     }
   }
 
@@ -176,32 +218,60 @@ export function RecentBooks({ userId }: RecentBooksProps) {
                     View Details
                   </Button>
                 )}
-                {book.status === 'completed' && book.content_url && (
+                
+                {/* Download buttons for completed books */}
+                {book.status === 'completed' && (
                   <div className="flex items-center gap-1">
                     <Button
                       size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        const userId = "cffa1a68-ce03-4628-8339-e08db54a6d24" // Replace with actual user ID
-                        window.open(`/api/generate-file/${book.id}?format=pdf&userId=${userId}`, '_blank')
-                      }}
-                      className="flex items-center gap-1 text-xs px-2 py-1"
+                      variant="outline"
+                      onClick={() => handleDownload(book.id, book.title, 'pdf')}
+                      disabled={bookManagementLoading}
+                      className="flex items-center gap-1"
+                      title="Download PDF"
                     >
-                      📕 PDF
+                      <FileText className="h-3 w-3" />
+                      PDF
                     </Button>
                     <Button
                       size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        const userId = "cffa1a68-ce03-4628-8339-e08db54a6d24" // Replace with actual user ID
-                        window.open(`/api/generate-file/${book.id}?format=docx&userId=${userId}`, '_blank')
-                      }}
-                      className="flex items-center gap-1 text-xs px-2 py-1"
+                      variant="outline"
+                      onClick={() => handleDownload(book.id, book.title, 'epub')}
+                      disabled={bookManagementLoading}
+                      className="flex items-center gap-1"
+                      title="Download EPUB"
                     >
-                      📄 DOCX
+                      <File className="h-3 w-3" />
+                      EPUB
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleDownload(book.id, book.title, 'metadata')}
+                      disabled={bookManagementLoading}
+                      className="flex items-center gap-1"
+                      title="Download Metadata"
+                    >
+                      <Download className="h-3 w-3" />
+                      Meta
                     </Button>
                   </div>
                 )}
+                
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleDelete(book.id, book.title)}
+                  disabled={deletingBooks.has(book.id) || bookManagementLoading}
+                  className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                >
+                  {deletingBooks.has(book.id) ? (
+                    <Loader className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  Delete
+                </Button>
               </div>
             </div>
           ))}

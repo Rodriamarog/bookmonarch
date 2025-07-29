@@ -144,37 +144,7 @@ export default function TestBookPage() {
               <h3 className="text-lg font-bold mb-3" style={{ color: "#111827" }}>
                 Download Test Book
               </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <button 
-                  onClick={() => {
-                    window.open('/api/test-book-file?format=docx', '_blank')
-                  }}
-                  className="px-4 py-3 rounded-lg text-white font-medium text-center"
-                  style={{ backgroundColor: "#2563EB" }}
-                >
-                  📄 DOCX
-                  <div className="text-xs opacity-80">Editable</div>
-                </button>
-                <button 
-                  onClick={() => {
-                    window.open('/api/test-book-file?format=pdf', '_blank')
-                  }}
-                  className="px-4 py-3 rounded-lg text-white font-medium text-center"
-                  style={{ backgroundColor: "#DC2626" }}
-                >
-                  📕 PDF
-                  <div className="text-xs opacity-80">5x8 Print</div>
-                </button>
-                <button 
-                  onClick={() => {
-                    window.open('/api/test-book-file?format=epub', '_blank')
-                  }}
-                  className="px-4 py-3 rounded-lg text-white font-medium text-center"
-                  style={{ backgroundColor: "#059669" }}
-                >
-                  📚 EPUB
-                  <div className="text-xs opacity-80">E-Reader</div>
-                </button>
+              <div className="grid grid-cols-1 gap-3">
                 <button 
                   onClick={() => {
                     const blob = new Blob([bookContent], { type: 'text/markdown' })
@@ -189,7 +159,7 @@ export default function TestBookPage() {
                   style={{ backgroundColor: "#7C3AED" }}
                 >
                   📝 Markdown
-                  <div className="text-xs opacity-80">Raw Text</div>
+                  <div className="text-xs opacity-80">Raw Text (PDF/EPUB generation moved to backend)</div>
                 </button>
               </div>
             </div>

@@ -5,12 +5,16 @@ Book generation API endpoints.
 import logging
 import threading
 import uuid
-from datetime import datetime
+from datetime import timedelta
 from flask import request, jsonify, g
 from typing import Dict, Any
 
 from api import api_bp
 from lib.auth import require_auth, get_current_user_id
+from lib.validation import validate_book_generation_request
+from lib.database_service import get_database_service, DatabaseError
+from lib.user_profile_service import get_profile_service, ProfileError
+from utils.datetime_utils import utc_now_iso, utc_now, format_for_database
 from models.book_models import BookData
 from services.outline_generator_service import OutlineGeneratorService
 from services.chapter_generator_service import ChapterGeneratorService
@@ -31,9 +35,14 @@ pdf_service = PDFGeneratorService()
 epub_service = EPUBGeneratorService()
 metadata_service = MetadataGeneratorService()
 
+# Initialize database and profile services
+db_service = get_database_service()
+profile_service = get_profile_service()
+
 
 @api_bp.route('/generate-book', methods=['POST'])
 @require_auth
+@validate_book_generation_request
 def generate_book():
     """
     Start book generation process.
@@ -51,43 +60,26 @@ def generate_book():
     try:
         user_id = get_current_user_id()
         
-        # Validate request data
-        if not request.is_json:
-            return jsonify({
-                'success': False,
-                'error': 'Request must be JSON',
-                'code': 'INVALID_REQUEST_FORMAT'
-            }), 400
+        # Check generation limits before proceeding
+        try:
+            limit_check = profile_service.check_generation_limit(user_id)
+            if not limit_check['allowed']:
+                return jsonify({
+                    'success': False,
+                    'error': 'Daily generation limit exceeded',
+                    'code': 'GENERATION_LIMIT_EXCEEDED',
+                    'message': f"You have reached your daily limit of {limit_check['daily_limit']} books. Please try again tomorrow.",
+                    'limit_info': limit_check
+                }), 429
+        except ProfileError as e:
+            logger.warning(f"Could not check generation limit for user {user_id}: {str(e)}")
+            # Continue anyway to maintain backward compatibility
         
-        data = request.get_json()
-        
-        # Validate required fields
-        title = data.get('title', '').strip()
-        author = data.get('author', '').strip()
-        book_type = data.get('book_type', '').strip()
-        
-        validation_errors = []
-        
-        if not title:
-            validation_errors.append('Book title is required')
-        elif len(title) > 200:
-            validation_errors.append('Book title cannot exceed 200 characters')
-        
-        if not author:
-            validation_errors.append('Author name is required')
-        elif len(author) > 100:
-            validation_errors.append('Author name cannot exceed 100 characters')
-        
-        if not book_type or book_type != 'non-fiction':
-            validation_errors.append('Only non-fiction books are supported')
-        
-        if validation_errors:
-            return jsonify({
-                'success': False,
-                'error': 'Validation failed',
-                'code': 'VALIDATION_ERROR',
-                'details': validation_errors
-            }), 400
+        # Get validated data from the decorator
+        data = g.validated_data
+        title = data['title']
+        author = data['author']
+        book_type = data['book_type']
         
         # Generate unique book ID
         book_id = str(uuid.uuid4())
@@ -102,8 +94,8 @@ def generate_book():
             'status': 'pending',
             'progress': 0,
             'current_step': 'Starting book generation...',
-            'created_at': datetime.utcnow().isoformat(),
-            'updated_at': datetime.utcnow().isoformat(),
+            'created_at': utc_now_iso(),
+            'updated_at': utc_now_iso(),
             'error': None,
             'files': {
                 'pdf_url': None,
@@ -111,6 +103,36 @@ def generate_book():
                 'metadata_url': None
             }
         }
+        
+        # Create initial book record in database
+        try:
+            book_data = {
+                'id': book_id,
+                'user_id': user_id,
+                'title': title,
+                'author_name': author,
+                'genre': book_type,
+                'status': 'pending',
+                'progress': 0,
+                'total_chapters': 15,
+                'created_at': format_for_database()
+            }
+            db_service.create_book(book_data)
+            logger.info(f"Created book record in database: {book_id}")
+        except DatabaseError as e:
+            logger.error(f"Failed to create book record in database: {str(e)}")
+            return jsonify({
+                'success': False,
+                'error': 'Failed to create book record',
+                'code': 'DATABASE_ERROR',
+                'message': str(e)
+            }), 500
+        
+        # Increment user's daily book count
+        try:
+            profile_service.increment_daily_book_count(user_id)
+        except ProfileError as e:
+            logger.warning(f"Could not increment book count for user {user_id}: {str(e)}")
         
         # Start book generation in background thread
         thread = threading.Thread(
@@ -154,46 +176,81 @@ def get_book_status(book_id: str):
     try:
         user_id = get_current_user_id()
         
-        # Check if book exists
-        if book_id not in generation_status:
-            return jsonify({
-                'success': False,
-                'error': 'Book not found',
-                'code': 'BOOK_NOT_FOUND'
-            }), 404
+        # First check in-memory status (for active generations)
+        if book_id in generation_status:
+            status = generation_status[book_id]
+            
+            # Check if user owns this book
+            if status['user_id'] != user_id:
+                return jsonify({
+                    'success': False,
+                    'error': 'Access denied',
+                    'code': 'ACCESS_DENIED'
+                }), 403
+            
+            # Return status information
+            response_data = {
+                'success': True,
+                'book_id': book_id,
+                'status': status['status'],
+                'progress': status['progress'],
+                'current_step': status['current_step'],
+                'title': status['title'],
+                'author': status['author'],
+                'created_at': status['created_at'],
+                'updated_at': status['updated_at']
+            }
+            
+            # Include error if present
+            if status['error']:
+                response_data['error'] = status['error']
+            
+            # Include file URLs if generation is complete
+            if status['status'] == 'completed':
+                response_data['files'] = status['files']
+            
+            return jsonify(response_data), 200
         
-        status = generation_status[book_id]
+        # If not in memory, check database for completed books
+        try:
+            book_data = db_service.get_book(book_id, user_id)
+            
+            if book_data:
+                # Return book data from database
+                response_data = {
+                    'success': True,
+                    'book_id': book_id,
+                    'status': book_data['status'],
+                    'progress': book_data['progress'] or 100,
+                    'current_step': 'Book generation completed',
+                    'title': book_data['title'],
+                    'author': book_data['author_name'],
+                    'created_at': book_data['created_at']
+                }
+                
+                # Include error if present
+                if book_data.get('error_message'):
+                    response_data['error'] = book_data['error_message']
+                
+                # Include file URLs if completed
+                if book_data['status'] == 'completed':
+                    response_data['files'] = {
+                        'pdf_url': book_data.get('content_url'),
+                        'epub_url': book_data.get('epub_url'),
+                        'metadata_url': book_data.get('metadata_url')
+                    }
+                
+                return jsonify(response_data), 200
+                
+        except DatabaseError as e:
+            logger.error(f"Database error getting book status: {str(e)}")
         
-        # Check if user owns this book
-        if status['user_id'] != user_id:
-            return jsonify({
-                'success': False,
-                'error': 'Access denied',
-                'code': 'ACCESS_DENIED'
-            }), 403
-        
-        # Return status information
-        response_data = {
-            'success': True,
-            'book_id': book_id,
-            'status': status['status'],
-            'progress': status['progress'],
-            'current_step': status['current_step'],
-            'title': status['title'],
-            'author': status['author'],
-            'created_at': status['created_at'],
-            'updated_at': status['updated_at']
-        }
-        
-        # Include error if present
-        if status['error']:
-            response_data['error'] = status['error']
-        
-        # Include file URLs if generation is complete
-        if status['status'] == 'completed':
-            response_data['files'] = status['files']
-        
-        return jsonify(response_data), 200
+        # Book not found in memory or database
+        return jsonify({
+            'success': False,
+            'error': 'Book not found',
+            'code': 'BOOK_NOT_FOUND'
+        }), 404
         
     except Exception as e:
         logger.error(f"Error getting book status for {book_id}: {str(e)}")
@@ -257,17 +314,41 @@ def _generate_book_async(book_id: str, user_id: str, title: str, author: str, bo
         metadata_url = metadata_service.create_metadata_document(metadata, title, author, user_id, book_id)
         
         # Step 7: Complete (100% progress)
-        generation_status[book_id].update({
+        final_status = {
             'status': 'completed',
             'progress': 100,
             'current_step': 'Book generation completed successfully!',
-            'updated_at': datetime.utcnow().isoformat(),
+            'updated_at': utc_now_iso(),
             'files': {
                 'pdf_url': pdf_url,
                 'epub_url': epub_url,
                 'metadata_url': metadata_url
             }
-        })
+        }
+        
+        # Update in-memory status
+        if book_id in generation_status:
+            generation_status[book_id].update(final_status)
+        
+        # Update database record with ALL file URLs
+        try:
+            db_service.update_book_file_urls(
+                book_id=book_id,
+                user_id=user_id,
+                pdf_url=pdf_url,
+                epub_url=epub_url,
+                metadata_url=metadata_url
+            )
+            
+            # Also update status and progress
+            db_service.update_book(book_id, user_id, {
+                'status': 'completed',
+                'progress': 100
+            })
+            
+            logger.info(f"Updated book record with all file URLs in database: {book_id}")
+        except DatabaseError as e:
+            logger.error(f"Failed to update book record in database: {str(e)}")
         
         logger.info(f"Successfully completed book generation for '{title}' (book_id: {book_id})")
         
@@ -276,61 +357,80 @@ def _generate_book_async(book_id: str, user_id: str, title: str, author: str, bo
         logger.error(f"Error in async book generation for {book_id}: {error_msg}")
         
         # Update status with error
+        error_status = {
+            'status': 'failed',
+            'progress': 0,
+            'current_step': 'Book generation failed',
+            'updated_at': utc_now_iso(),
+            'error': str(e)
+        }
+        
         if book_id in generation_status:
-            generation_status[book_id].update({
+            generation_status[book_id].update(error_status)
+        
+        # Update database record with error
+        try:
+            db_service.update_book(book_id, user_id, {
                 'status': 'failed',
                 'progress': 0,
-                'current_step': 'Book generation failed',
-                'updated_at': datetime.utcnow().isoformat(),
-                'error': str(e)
+                'error_message': str(e)
             })
+            logger.info(f"Updated book record with error in database: {book_id}")
+        except DatabaseError as db_error:
+            logger.error(f"Failed to update book record with error in database: {str(db_error)}")
 
 
 def _update_generation_status(book_id: str, status: str, progress: int, current_step: str):
     """
-    Update generation status for a book.
+    Update generation status in memory and database.
     
     Args:
-        book_id: Book identifier
+        book_id: Book ID
         status: Current status
-        progress: Progress percentage (0-100)
-        current_step: Description of current step
+        progress: Progress percentage
+        current_step: Current step description
     """
+    # Update in-memory status
     if book_id in generation_status:
         generation_status[book_id].update({
             'status': status,
             'progress': progress,
             'current_step': current_step,
-            'updated_at': datetime.utcnow().isoformat()
+            'updated_at': utc_now_iso()
         })
-        logger.info(f"Status update for {book_id}: {current_step} ({progress}%)")
+    
+    # Update database record
+    try:
+        # Extract user_id from generation_status if available
+        user_id = generation_status[book_id]['user_id'] if book_id in generation_status else None
+        if user_id:
+            db_service.update_book(book_id, user_id, {
+                'status': status,
+                'progress': progress
+            })
+    except DatabaseError as e:
+        logger.error(f"Failed to update book status in database: {str(e)}")
 
 
-# Utility function to clean up old generation status (call periodically)
 def cleanup_old_generation_status(max_age_hours: int = 24):
     """
-    Clean up old generation status entries.
+    Clean up old generation status entries from memory.
     
     Args:
         max_age_hours: Maximum age in hours before cleanup
     """
-    try:
-        from datetime import timedelta
-        
-        cutoff_time = datetime.utcnow() - timedelta(hours=max_age_hours)
-        
-        to_remove = []
-        for book_id, status in generation_status.items():
-            created_at = datetime.fromisoformat(status['created_at'])
-            if created_at < cutoff_time:
-                to_remove.append(book_id)
-        
-        for book_id in to_remove:
-            del generation_status[book_id]
-            logger.info(f"Cleaned up old generation status for book {book_id}")
-        
-        if to_remove:
-            logger.info(f"Cleaned up {len(to_remove)} old generation status entries")
-            
-    except Exception as e:
-        logger.error(f"Error during generation status cleanup: {str(e)}")
+    cutoff_time = utc_now() - timedelta(hours=max_age_hours)
+    
+    # Remove old entries from memory
+    from utils.datetime_utils import from_iso_string
+    
+    old_entries = [
+        book_id for book_id, status in generation_status.items()
+        if from_iso_string(status['created_at']) < cutoff_time
+    ]
+    
+    for book_id in old_entries:
+        del generation_status[book_id]
+    
+    if old_entries:
+        logger.info(f"Cleaned up {len(old_entries)} old generation status entries")

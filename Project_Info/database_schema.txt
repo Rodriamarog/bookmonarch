@@ -23,6 +23,8 @@
 | books          | content_url           | text                     | YES         | null              |             |                                     |
 | books          | tokens_consumed       | integer                  | YES         | null              |             |                                     |
 | books          | error_message         | text                     | YES         | null              |             |                                     |
+| books          | epub_url              | text                     | YES         | null              |             |                                     |
+| books          | metadata_url          | text                     | YES         | null              |             |                                     |
 | profiles       | id                    | uuid                     | NO          | null              | PRIMARY KEY |                                     |
 | profiles       | created_at            | timestamp with time zone | NO          | now()             |             |                                     |
 | profiles       | updated_at            | timestamp with time zone | YES         | now()             |             |                                     |
@@ -32,18 +34,3 @@
 | profiles       | books_generated_today | integer                  | NO          | 0                 |             |                                     |
 | profiles       | last_generation_date  | date                     | YES         | null              |             |                                     |
 | profiles       | stripe_customer_id    | text                     | YES         | null              |             |                                     |
-
-
-
-
-
-| schema_name | table_name | policy_name                        | command | using_expression       | with_check_expression  | roles           |
-| ----------- | ---------- | ---------------------------------- | ------- | ---------------------- | ---------------------- | --------------- |
-| public      | books      | Enable Delete of Own Books         | DELETE  | (auth.uid() = user_id) | null                   | {authenticated} |
-| public      | books      | Enable Insert of Own Books         | INSERT  | null                   | (auth.uid() = user_id) | {authenticated} |
-| public      | books      | Enable Read Access for Own Books   | SELECT  | (auth.uid() = user_id) | null                   | {authenticated} |
-| public      | books      | Enable Update of Own Books         | UPDATE  | (auth.uid() = user_id) | (auth.uid() = user_id) | {authenticated} |
-| public      | profiles   | Enable Delete of Own Profile       | DELETE  | (auth.uid() = id)      | null                   | null            |
-| public      | profiles   | Enable Insert for Own Profile      | INSERT  | null                   | (auth.uid() = id)      | {authenticated} |
-| public      | profiles   | Enable Read Access for Own Profile | SELECT  | (auth.uid() = id)      | null                   | {authenticated} |
-| public      | profiles   | Enable Update for Own Profile      | UPDATE  | (auth.uid() = id)      | (auth.uid() = id)      | {authenticated} |

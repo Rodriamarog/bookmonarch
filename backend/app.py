@@ -8,12 +8,13 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 
+# Load environment variables FIRST
+load_dotenv()
+
 from config import Config, get_config
 from utils.logging_config import setup_logging
 from api import api_bp
-
-# Load environment variables
-load_dotenv()
+from lib.rate_limiter import create_limiter, apply_rate_limits
 
 # Setup logging
 logger = setup_logging()
@@ -25,14 +26,27 @@ ConfigClass = get_config()
 app = Flask(__name__)
 app.config.from_object(ConfigClass)
 
-# Enable CORS for frontend requests
-CORS(app, origins=ConfigClass.CORS_ORIGINS)
+# Enable CORS for frontend requests with comprehensive configuration
+CORS(app, 
+     origins=ConfigClass.CORS_ORIGINS,
+     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+     allow_headers=['Content-Type', 'Authorization', 'X-Requested-With'],
+     expose_headers=['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
+     supports_credentials=True,
+     max_age=86400  # 24 hours preflight cache
+)
 
 # Initialize configuration
 ConfigClass.init_app(app)
 
+# Initialize rate limiting
+limiter = create_limiter(app)
+
 # Register API blueprint
 app.register_blueprint(api_bp)
+
+# Apply rate limits to endpoints
+apply_rate_limits(limiter)
 
 # Root endpoint - redirect to API documentation or health check
 @app.route('/', methods=['GET'])

@@ -4,11 +4,11 @@ Service for generating book marketing metadata using the Gemini API.
 
 import logging
 from typing import Dict, Any, List
-from datetime import datetime
 
 from models.book_models import BookMetadata, BookData
 from services.gemini_api_client import GeminiAPIClient
 from utils.validation import BookValidator, ValidationError
+from utils.datetime_utils import utc_now_iso
 from config import Config
 from lib.supabase_storage import SupabaseStorageService, SupabaseStorageError
 
@@ -253,7 +253,8 @@ class MetadataGeneratorService:
             story.append(Paragraph("Book Metadata Document", title_style))
             
             # Generated date
-            current_date = datetime.now().strftime('%Y-%m-%d')
+            from utils.datetime_utils import get_current_date_string
+            current_date = get_current_date_string()
             story.append(Paragraph(f"Generated on: {current_date}", info_style))
             story.append(Spacer(1, 20))
             
@@ -368,7 +369,7 @@ class MetadataGeneratorService:
             'back_cover': metadata.back_cover_description,
             'trim_size': metadata.trim_size,
             'bleed': metadata.bleed_settings,
-            'generated_date': datetime.now().isoformat()
+            'generated_date': utc_now_iso()
         }
         
         self.logger.info("Formatted metadata for KDP")

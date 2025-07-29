@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { Card } from "@/components/ui"
+import { flaskAPI } from "@/lib/api/flask-client"
+import { useErrorHandler } from "@/lib/error-handling"
 
 interface BookData {
   id: string
@@ -26,23 +28,36 @@ export default function BookDebugPage() {
   const [bookData, setBookData] = useState<BookData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  
+  // Initialize error handler for this component
+  const { handleError } = useErrorHandler({
+    component: 'BookDebugPage',
+    bookId: bookId
+  })
 
   useEffect(() => {
     const fetchBookData = async () => {
       try {
-        // You'll need to replace this with the actual user ID
-        const userId = "cffa1a68-ce03-4628-8339-e08db54a6d24" // Replace with actual user ID
+        // Use the FlaskAPIClient service instead of direct fetch
+        const response = await flaskAPI.getBookStatus(bookId);
         
-        const response = await fetch(`/api/book-status/${bookId}?userId=${userId}`)
-        const data = await response.json()
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to fetch book data')
-        }
-
+        // Map BookStatusResponse to BookData interface
+        const data: BookData = {
+          id: response.book_id,
+          title: response.title,
+          author: response.author,
+          genre: 'non-fiction', // Default since book_type isn't in status response
+          status: response.status,
+          progress: response.progress,
+          currentStage: response.current_step,
+          createdAt: response.created_at,
+          contentUrl: response.files?.pdf_url
+        };
+        
         setBookData(data)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error')
+        const errorResult = handleError(err);
+        setError(errorResult.userMessage)
       } finally {
         setLoading(false)
       }
@@ -241,40 +256,7 @@ export default function BookDebugPage() {
                         <h3 className="text-lg font-bold mb-3" style={{ color: "#111827" }}>
                           Download Book
                         </h3>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                          <button 
-                            onClick={() => {
-                              const userId = "cffa1a68-ce03-4628-8339-e08db54a6d24" // Replace with actual user ID
-                              window.open(`/api/generate-file/${bookData.id}?format=docx&userId=${userId}`, '_blank')
-                            }}
-                            className="px-4 py-3 rounded-lg text-white font-medium text-center"
-                            style={{ backgroundColor: "#2563EB" }}
-                          >
-                            📄 DOCX
-                            <div className="text-xs opacity-80">Editable</div>
-                          </button>
-                          <button 
-                            onClick={() => {
-                              const userId = "cffa1a68-ce03-4628-8339-e08db54a6d24" // Replace with actual user ID
-                              window.open(`/api/generate-file/${bookData.id}?format=pdf&userId=${userId}`, '_blank')
-                            }}
-                            className="px-4 py-3 rounded-lg text-white font-medium text-center"
-                            style={{ backgroundColor: "#DC2626" }}
-                          >
-                            📕 PDF
-                            <div className="text-xs opacity-80">5x8 Print</div>
-                          </button>
-                          <button 
-                            onClick={() => {
-                              const userId = "cffa1a68-ce03-4628-8339-e08db54a6d24" // Replace with actual user ID
-                              window.open(`/api/generate-file/${bookData.id}?format=epub&userId=${userId}`, '_blank')
-                            }}
-                            className="px-4 py-3 rounded-lg text-white font-medium text-center"
-                            style={{ backgroundColor: "#059669" }}
-                          >
-                            📚 EPUB
-                            <div className="text-xs opacity-80">E-Reader</div>
-                          </button>
+                        <div className="grid grid-cols-1 gap-3">
                           <button 
                             onClick={() => {
                               const blob = new Blob([bookContent.completeBook], { type: 'text/markdown' })
@@ -289,7 +271,7 @@ export default function BookDebugPage() {
                             style={{ backgroundColor: "#7C3AED" }}
                           >
                             📝 Markdown
-                            <div className="text-xs opacity-80">Raw Text</div>
+                            <div className="text-xs opacity-80">Raw Text (PDF/EPUB generation moved to backend)</div>
                           </button>
                         </div>
                       </div>

@@ -108,7 +108,8 @@ class EPUBGeneratorService:
         book.add_author(book_data.author)
         
         # Add publication date
-        book.add_metadata('DC', 'date', datetime.now().strftime('%Y-%m-%d'))
+        from utils.datetime_utils import get_current_date_string
+        book.add_metadata('DC', 'date', get_current_date_string())
         
         # Add description
         book.add_metadata('DC', 'description', f'A comprehensive guide on {book_data.title}')

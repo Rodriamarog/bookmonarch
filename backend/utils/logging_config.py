@@ -8,8 +8,8 @@ import os
 import sys
 import json
 from pathlib import Path
-from datetime import datetime
 from typing import Dict, Any
+from utils.datetime_utils import utc_now_iso
 
 
 class StructuredFormatter(logging.Formatter):
@@ -18,7 +18,7 @@ class StructuredFormatter(logging.Formatter):
     def format(self, record):
         """Format log record as structured JSON."""
         log_entry = {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': utc_now_iso(),
             'level': record.levelname,
             'logger': record.name,
             'message': record.getMessage(),

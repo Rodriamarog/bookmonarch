@@ -7,6 +7,8 @@ import { SubscriptionButton } from "@/components/subscription/SubscriptionButton
 import { RecentBooks } from "@/components/dashboard/RecentBooks"
 import { useAuthContext } from "@/contexts/AuthContext"
 import { Crown, BookOpen, Settings, User } from "lucide-react"
+import { bookGenerationService } from "@/lib/api/book-generation"
+import { useErrorHandler, ErrorSeverity } from "@/lib/error-handling"
 
 export default function BookMonarchDashboard() {
   const [bookTitle, setBookTitle] = useState("")
@@ -20,6 +22,12 @@ export default function BookMonarchDashboard() {
   const [generationStage, setGenerationStage] = useState("")
   const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({})
   const { user, profile, loading, signOut } = useAuthContext()
+  
+  // Initialize error handler for this component
+  const { handleError } = useErrorHandler({
+    component: 'BookMonarchDashboard',
+    userId: user?.id
+  })
 
   // Handle URL parameters for success/cancel notifications
   useEffect(() => {
@@ -76,41 +84,43 @@ export default function BookMonarchDashboard() {
     setGenerationProgress(0)
     setGenerationStage("Initializing book generation...")
     
+    console.log('🚀 Starting book generation...')
+    
     try {
-      // Call the generate-book API
-      const response = await fetch('/api/generate-book', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: bookTitle,
-          author: authorName,
-          bookType: bookType,
-          writingStyle: writingStyle || undefined,
-          userId: user?.id
-        })
-      })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        if (result.limitReached) {
-          alert(result.error)
-          return
-        }
-        throw new Error(result.error || 'Failed to start book generation')
-      }
-
-      const { bookId, accessToken } = result
+      // Create request using the service
+      const request = bookGenerationService.createRequest(bookTitle, authorName);
+      console.log('📝 Request data:', request)
       
-      // Start polling for progress
-      await pollBookProgress(bookId, user?.id, accessToken)
+      // Use the service for generation with progress tracking
+      const result = await bookGenerationService.generateBookWithProgress(request, {
+        pollInterval: 2000, // 2 seconds
+        timeout: 30 * 60 * 1000, // 30 minutes
+        onProgress: (status) => {
+          console.log('📈 Progress update:', status.progress, 'Stage:', status.current_step)
+          setGenerationProgress(status.progress)
+          setGenerationStage(status.current_step || 'Processing...')
+          
+          // Handle completion within progress callback
+          if (status.status === 'completed') {
+            setGenerationStage("Book generation complete!")
+            setNotification('🎉 Your book has been generated successfully! Check your library to download it.')
+          }
+        }
+      });
+      
+      console.log('✅ Book generation completed:', result)
       
     } catch (error) {
-      console.error("Book generation failed:", error)
-      setGenerationStage("Generation failed")
-      alert(error instanceof Error ? error.message : "Book generation failed. Please try again.")
+      const errorResult = handleError(error);
+      
+      // Special handling for generation limit exceeded
+      if (errorResult.code === 'GENERATION_LIMIT_EXCEEDED') {
+        alert(errorResult.userMessage);
+        return;
+      }
+      
+      setGenerationStage("Generation failed");
+      alert(errorResult.userMessage);
     } finally {
       setIsGenerating(false)
       setGenerationProgress(0)
@@ -118,60 +128,9 @@ export default function BookMonarchDashboard() {
     }
   }
 
-  const pollBookProgress = async (bookId: string, userId?: string, accessToken?: string) => {
-    const maxPollingTime = 30 * 60 * 1000 // 30 minutes max
-    const pollingInterval = 2000 // 2 seconds
-    const startTime = Date.now()
-
-    const poll = async () => {
-      try {
-        const params = new URLSearchParams()
-        if (userId) params.append('userId', userId)
-        if (accessToken) params.append('accessToken', accessToken)
-
-        const response = await fetch(`/api/book-status/${bookId}?${params}`)
-        const bookStatus = await response.json()
-
-        if (!response.ok) {
-          throw new Error(bookStatus.error || 'Failed to fetch book status')
-        }
-
-        // Update progress
-        setGenerationProgress(bookStatus.progress || 0)
-        setGenerationStage(bookStatus.currentStage || 'Processing...')
-
-        // Check if generation is complete
-        if (bookStatus.status === 'completed') {
-          setGenerationStage("Book generation complete!")
-          setNotification('🎉 Your book has been generated successfully! Check your library to download it.')
-          return
-        }
-
-        // Check if generation failed
-        if (bookStatus.status === 'failed') {
-          throw new Error(bookStatus.errorMessage || 'Book generation failed')
-        }
-
-        // Check if we should continue polling
-        if (Date.now() - startTime < maxPollingTime && 
-            (bookStatus.status === 'generating' || bookStatus.status === 'outline_complete')) {
-          setTimeout(poll, pollingInterval)
-        } else if (bookStatus.status === 'outline_complete') {
-          setGenerationStage("Book outline complete! Full chapter generation will be available soon.")
-          setNotification('📝 Book outline generated successfully! Full chapter generation coming in the next update.')
-        } else {
-          throw new Error('Book generation timed out')
-        }
-
-      } catch (error) {
-        console.error('Polling error:', error)
-        setGenerationStage("Generation failed")
-        throw error
-      }
-    }
-
-    await poll()
-  }
+  // Note: Polling is now handled by the BookGenerationService
+  // The pollBookProgress function has been removed and replaced with the
+  // service-based approach that includes sophisticated polling with abort controllers
 
   const genres = [
     "Fiction", "Non-Fiction", "Mystery", "Romance", "Sci-Fi", "Fantasy", 

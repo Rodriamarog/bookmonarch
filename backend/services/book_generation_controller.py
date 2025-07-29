@@ -68,7 +68,8 @@ class BookGenerationController:
             return render_template('index.html', errors=errors, title=title, author=author)
         
         # Generate unique session ID for this generation
-        generation_id = f"{title.replace(' ', '_').lower()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        from utils.datetime_utils import get_timestamp_for_filename
+        generation_id = f"{title.replace(' ', '_').lower()}_{get_timestamp_for_filename()}"
         session['generation_id'] = generation_id
         session['book_title'] = title
         session['author'] = author
@@ -257,44 +258,9 @@ class BookGenerationController:
             self.logger.error(error_msg)
             self._update_status(generation_id, error_msg, 0, False, error=str(e))
     
-    def delete_book(self, book_id: str):
-        """Handle book deletion request."""
-        try:
-            from supabase import create_client
-            
-            # Initialize Supabase client
-            supabase_url = os.getenv('DATABASE_URL')
-            supabase_key = os.getenv('PUBLIC_KEY')
-            
-            if not supabase_url or not supabase_key:
-                return jsonify({'error': 'Supabase configuration missing'}), 500
-            
-            # Get the authorization header
-            auth_header = request.headers.get('Authorization')
-            if not auth_header or not auth_header.startswith('Bearer '):
-                return jsonify({'error': 'Authorization required'}), 401
-            
-            # Extract the JWT token
-            token = auth_header.split(' ')[1]
-            
-            # Create Supabase client with the user's JWT token
-            supabase = create_client(supabase_url, supabase_key)
-            
-            # Set the session with the JWT token
-            supabase.auth.set_session(token, token)
-            
-            # Delete the book (RLS policies will ensure user can only delete their own books)
-            result = supabase.table('books').delete().eq('id', book_id).execute()
-            
-            if not result.data:
-                return jsonify({'error': 'Book not found or access denied'}), 404
-            
-            self.logger.info(f"Successfully deleted book: {book_id}")
-            return jsonify({'message': 'Book deleted successfully'}), 200
-            
-        except Exception as e:
-            self.logger.error(f"Error deleting book {book_id}: {str(e)}")
-            return jsonify({'error': f'Failed to delete book: {str(e)}'}), 500
+    # Note: Book deletion is now handled by the file_management API endpoint
+    # The delete_book method has been removed to avoid duplication and use the
+    # centralized database service for consistent operations.
 
     def _update_status(self, generation_id: str, status: str, progress: int, complete: bool = False, files: Dict[str, str] = None, error: str = None):
         """Update generation status."""

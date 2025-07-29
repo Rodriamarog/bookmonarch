@@ -477,7 +477,8 @@ class PDFGeneratorService:
         story.append(Spacer(1, 0.5 * inch))
         
         # Get current year
-        current_year = datetime.now().year
+        from utils.datetime_utils import get_current_year
+        current_year = get_current_year()
         
         # Main copyright notice
         copyright_text = f"Copyright © {current_year} {book_data.author}"

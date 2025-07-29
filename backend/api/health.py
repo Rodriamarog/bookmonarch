@@ -4,9 +4,9 @@ Health check API endpoints.
 
 import os
 import logging
-from datetime import datetime
 from flask import jsonify
 from api import api_bp
+from utils.datetime_utils import utc_now_iso
 
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ def health_check():
         # Check critical dependencies
         checks = {
             'status': 'healthy',
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': utc_now_iso(),
             'version': os.environ.get('APP_VERSION', 'unknown'),
             'service': 'flask-book-generator',
             'dependencies': {
@@ -49,7 +49,7 @@ def health_check():
         logger.error(f"Health check error: {str(e)}")
         return jsonify({
             'status': 'error',
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': utc_now_iso(),
             'error': str(e)
         }), 500
 
@@ -78,13 +78,13 @@ def readiness_check():
         if missing_vars:
             return jsonify({
                 'ready': False,
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': utc_now_iso(),
                 'error': f'Missing required environment variables: {missing_vars}'
             }), 503
         
         return jsonify({
             'ready': True,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': utc_now_iso(),
             'service': 'flask-book-generator'
         }), 200
         
@@ -92,7 +92,7 @@ def readiness_check():
         logger.error(f"Readiness check error: {str(e)}")
         return jsonify({
             'ready': False,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': utc_now_iso(),
             'error': str(e)
         }), 500
 
@@ -107,7 +107,7 @@ def liveness_check():
     """
     return jsonify({
         'alive': True,
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': utc_now_iso(),
         'service': 'flask-book-generator'
     }), 200
 

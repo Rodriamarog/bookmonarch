@@ -65,12 +65,23 @@ class Config:
     # Health check settings
     HEALTH_CHECK_TIMEOUT = 5  # seconds
     
+    # Database service settings
+    DB_CONNECTION_POOL_SIZE = int(os.environ.get('DB_CONNECTION_POOL_SIZE', '10'))
+    DB_CONNECTION_TIMEOUT = int(os.environ.get('DB_CONNECTION_TIMEOUT', '30'))
+    DB_AUTO_PROFILE_CREATION = os.environ.get('DB_AUTO_PROFILE_CREATION', 'true').lower() == 'true'
+    
+    # User profile settings
+    DEFAULT_DAILY_BOOK_LIMIT = int(os.environ.get('DEFAULT_DAILY_BOOK_LIMIT', '5'))
+    PREMIUM_DAILY_BOOK_LIMIT = int(os.environ.get('PREMIUM_DAILY_BOOK_LIMIT', '50'))
+    PRO_DAILY_BOOK_LIMIT = int(os.environ.get('PRO_DAILY_BOOK_LIMIT', '100'))
+    
     @classmethod
     def validate_config(cls):
         """Validate required configuration variables."""
         required_vars = [
             'SECRET_KEY',
             'SUPABASE_URL',
+            'SUPABASE_KEY',
             'GEMINI_API_KEY'
         ]
         
@@ -104,6 +115,19 @@ class Config:
         
         logger = logging.getLogger(__name__)
         logger.info(f"Initialized {Config.APP_NAME} v{Config.APP_VERSION}")
+        
+        # Initialize database service if auto profile creation is enabled
+        if Config.DB_AUTO_PROFILE_CREATION:
+            try:
+                from lib.database_service import get_database_service
+                db_service = get_database_service()
+                health = db_service.health_check()
+                if health.get('status') == 'healthy':
+                    logger.info("Database service initialized successfully")
+                else:
+                    logger.warning(f"Database service health check failed: {health}")
+            except Exception as e:
+                logger.error(f"Failed to initialize database service: {str(e)}")
 
 
 class DevelopmentConfig(Config):
@@ -125,9 +149,17 @@ class DevelopmentConfig(Config):
     @staticmethod
     def init_app(app):
         """Initialize development application."""
-        Config.init_app(app)
+        # Validate configuration
+        DevelopmentConfig.validate_config()
+        
+        # Setup logging
+        logging.basicConfig(
+            level=getattr(logging, DevelopmentConfig.LOG_LEVEL),
+            format=DevelopmentConfig.LOG_FORMAT
+        )
         
         logger = logging.getLogger(__name__)
+        logger.info(f"Initialized {DevelopmentConfig.APP_NAME} v{DevelopmentConfig.APP_VERSION}")
         logger.warning("Running in DEVELOPMENT mode - not suitable for production")
 
 
@@ -175,14 +207,19 @@ class ProductionConfig(Config):
     @staticmethod
     def init_app(app):
         """Initialize production application."""
-        Config.init_app(app)
+        # Validate production config
+        ProductionConfig.validate_config()
+        
+        # Setup logging
+        logging.basicConfig(
+            level=getattr(logging, ProductionConfig.LOG_LEVEL),
+            format=ProductionConfig.LOG_FORMAT
+        )
         
         # Additional production setup
         logger = logging.getLogger(__name__)
+        logger.info(f"Initialized {ProductionConfig.APP_NAME} v{ProductionConfig.APP_VERSION}")
         logger.info("Running in PRODUCTION mode")
-        
-        # Validate production config
-        ProductionConfig.validate_config()
 
 
 class TestingConfig(Config):
@@ -206,9 +243,17 @@ class TestingConfig(Config):
     @staticmethod
     def init_app(app):
         """Initialize testing application."""
-        Config.init_app(app)
+        # Validate configuration
+        TestingConfig.validate_config()
+        
+        # Setup logging
+        logging.basicConfig(
+            level=getattr(logging, TestingConfig.LOG_LEVEL),
+            format=TestingConfig.LOG_FORMAT
+        )
         
         logger = logging.getLogger(__name__)
+        logger.info(f"Initialized {TestingConfig.APP_NAME} v{TestingConfig.APP_VERSION}")
         logger.info("Running in TESTING mode")
 
 
