@@ -148,6 +148,82 @@ class DatabaseService:
             self.logger.error(f"Error updating book {book_id}: {str(e)}")
             raise DatabaseError(f"Failed to update book: {str(e)}")
     
+    def update_book_with_jwt(self, book_id: str, user_id: str, updates: Dict[str, Any], jwt_token: str) -> Dict[str, Any]:
+        """
+        Update book record using JWT-authenticated client.
+        
+        This method is used by background threads that need to update books
+        on behalf of authenticated users while maintaining RLS compliance.
+        
+        Args:
+            book_id: Book ID
+            user_id: User ID
+            updates: Fields to update
+            jwt_token: JWT token for authentication
+            
+        Returns:
+            Dict: Updated book record
+            
+        Raises:
+            DatabaseError: If update fails or JWT is invalid
+        """
+        try:
+            # Create authenticated client using the JWT token
+            auth_client = self.get_authenticated_client(jwt_token)
+            
+            result = auth_client.table('books').update(updates).eq('id', book_id).eq('user_id', user_id).execute()
+            
+            if not result.data:
+                raise DatabaseError("Book not found or access denied")
+            
+            self.logger.info(f"Updated book {book_id} with JWT authentication")
+            return result.data[0]
+            
+        except Exception as e:
+            error_msg = str(e).lower()
+            
+            # Check for common JWT/auth errors
+            if any(keyword in error_msg for keyword in ['token', 'jwt', 'expired', 'invalid', 'unauthorized', 'forbidden']):
+                self.logger.warning(f"JWT authentication failed for book {book_id}: {str(e)}")
+                raise DatabaseError(f"Authentication failed - JWT token may be expired or invalid: {str(e)}")
+            else:
+                self.logger.error(f"Database error updating book {book_id} with JWT: {str(e)}")
+                raise DatabaseError(f"Failed to update book with JWT: {str(e)}")
+    
+    def update_book_with_jwt_fallback(self, book_id: str, user_id: str, updates: Dict[str, Any], jwt_token: str) -> Dict[str, Any]:
+        """
+        Update book record with JWT authentication and fallback to regular client.
+        
+        This method tries JWT authentication first, and falls back to the regular
+        authenticated client if JWT fails. Useful for background operations where
+        JWT might expire.
+        
+        Args:
+            book_id: Book ID
+            user_id: User ID
+            updates: Fields to update
+            jwt_token: JWT token for authentication
+            
+        Returns:
+            Dict: Updated book record
+        """
+        try:
+            # Try JWT authentication first
+            return self.update_book_with_jwt(book_id, user_id, updates, jwt_token)
+        except DatabaseError as jwt_error:
+            # If JWT fails due to authentication issues, try fallback
+            if "Authentication failed" in str(jwt_error):
+                self.logger.warning(f"JWT authentication failed for book {book_id}, attempting fallback to regular client")
+                try:
+                    return self.update_book(book_id, user_id, updates)
+                except DatabaseError as fallback_error:
+                    # If both fail, raise the original JWT error
+                    self.logger.error(f"Both JWT and fallback authentication failed for book {book_id}")
+                    raise jwt_error
+            else:
+                # Re-raise non-authentication errors
+                raise
+    
     def update_book_file_urls(self, book_id: str, user_id: str, pdf_url: str = None, epub_url: str = None, metadata_url: str = None) -> Dict[str, Any]:
         """
         Update book file URLs (convenience method).
@@ -180,6 +256,72 @@ class DatabaseService:
         except Exception as e:
             self.logger.error(f"Error updating file URLs for book {book_id}: {str(e)}")
             raise DatabaseError(f"Failed to update file URLs: {str(e)}")
+    
+    def update_book_file_urls_with_jwt(self, book_id: str, user_id: str, jwt_token: str, pdf_url: str = None, epub_url: str = None, metadata_url: str = None) -> Dict[str, Any]:
+        """
+        Update book file URLs using JWT-authenticated client.
+        
+        Args:
+            book_id: Book ID
+            user_id: User ID
+            jwt_token: JWT token for authentication
+            pdf_url: PDF file URL
+            epub_url: EPUB file URL
+            metadata_url: Metadata file URL
+            
+        Returns:
+            Dict: Updated book record
+        """
+        try:
+            updates = {}
+            
+            if pdf_url is not None:
+                updates['content_url'] = pdf_url
+            if epub_url is not None:
+                updates['epub_url'] = epub_url
+            if metadata_url is not None:
+                updates['metadata_url'] = metadata_url
+            
+            if not updates:
+                raise DatabaseError("No file URLs provided to update")
+            
+            return self.update_book_with_jwt(book_id, user_id, updates, jwt_token)
+            
+        except Exception as e:
+            self.logger.error(f"Error updating file URLs for book {book_id} with JWT: {str(e)}")
+            raise DatabaseError(f"Failed to update file URLs with JWT: {str(e)}")
+    
+    def update_book_file_urls_with_jwt_fallback(self, book_id: str, user_id: str, jwt_token: str, pdf_url: str = None, epub_url: str = None, metadata_url: str = None) -> Dict[str, Any]:
+        """
+        Update book file URLs with JWT authentication and fallback to regular client.
+        
+        Args:
+            book_id: Book ID
+            user_id: User ID
+            jwt_token: JWT token for authentication
+            pdf_url: PDF file URL
+            epub_url: EPUB file URL
+            metadata_url: Metadata file URL
+            
+        Returns:
+            Dict: Updated book record
+        """
+        try:
+            # Try JWT authentication first
+            return self.update_book_file_urls_with_jwt(book_id, user_id, jwt_token, pdf_url, epub_url, metadata_url)
+        except DatabaseError as jwt_error:
+            # If JWT fails due to authentication issues, try fallback
+            if "Authentication failed" in str(jwt_error):
+                self.logger.warning(f"JWT authentication failed for file URLs update, book {book_id}, attempting fallback")
+                try:
+                    return self.update_book_file_urls(book_id, user_id, pdf_url, epub_url, metadata_url)
+                except DatabaseError as fallback_error:
+                    # If both fail, raise the original JWT error
+                    self.logger.error(f"Both JWT and fallback authentication failed for file URLs, book {book_id}")
+                    raise jwt_error
+            else:
+                # Re-raise non-authentication errors
+                raise
     
     def delete_book(self, book_id: str, user_id: str) -> bool:
         """
