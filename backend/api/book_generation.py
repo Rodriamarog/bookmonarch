@@ -10,7 +10,7 @@ from flask import request, jsonify, g
 from typing import Dict, Any
 
 from api import api_bp
-from lib.auth import require_auth, get_current_user_id
+from lib.auth import require_auth, optional_auth, get_current_user_id
 from lib.validation import validate_book_generation_request
 from lib.database_service import get_database_service, DatabaseError
 from lib.user_profile_service import get_profile_service, ProfileError
@@ -41,7 +41,7 @@ profile_service = get_profile_service()
 
 
 @api_bp.route('/generate-book', methods=['POST'])
-@require_auth
+@optional_auth
 @validate_book_generation_request
 def generate_book():
     """
@@ -60,20 +60,57 @@ def generate_book():
     try:
         user_id = get_current_user_id()
         
-        # Check generation limits before proceeding
-        try:
-            limit_check = profile_service.check_generation_limit(user_id)
-            if not limit_check['allowed']:
+        # Get anonymous user ID from request if user is not authenticated
+        anonymous_user_id = None
+        if not user_id:
+            data = request.get_json()
+            anonymous_user_id = data.get('anonymous_user_id')
+            if not anonymous_user_id:
                 return jsonify({
                     'success': False,
-                    'error': 'Daily generation limit exceeded',
-                    'code': 'GENERATION_LIMIT_EXCEEDED',
-                    'message': f"You have reached your daily limit of {limit_check['daily_limit']} books. Please try again tomorrow.",
+                    'error': 'Anonymous user ID required for unauthenticated requests',
+                    'code': 'ANONYMOUS_ID_REQUIRED',
+                    'message': 'Please provide an anonymous_user_id to generate books without authentication.'
+                }), 400
+        
+        # Check generation limits before proceeding
+        try:
+            limit_check = profile_service.check_generation_limit(
+                user_id=user_id, 
+                anonymous_user_id=anonymous_user_id
+            )
+            
+            if not limit_check['allowed']:
+                error_message = "Generation limit exceeded"
+                code = 'GENERATION_LIMIT_EXCEEDED'
+                
+                if limit_check['user_type'] == 'anonymous':
+                    error_message = "You have reached the limit of 1 book for anonymous users. Please sign in to continue."
+                    code = 'ANONYMOUS_LIMIT_EXCEEDED'
+                elif limit_check['subscription_status'] == 'free':
+                    error_message = f"You have reached your lifetime limit of {limit_check['limit_value']} book for free accounts. Please upgrade to Pro to generate more books."
+                    code = 'FREE_LIMIT_EXCEEDED'
+                elif limit_check['subscription_status'] == 'pro':
+                    error_message = f"You have reached your daily limit of {limit_check['limit_value']} books. Please try again tomorrow."
+                    code = 'DAILY_LIMIT_EXCEEDED'
+                
+                return jsonify({
+                    'success': False,
+                    'error': error_message,
+                    'code': code,
                     'limit_info': limit_check
                 }), 429
+                
         except ProfileError as e:
-            logger.warning(f"Could not check generation limit for user {user_id}: {str(e)}")
-            # Continue anyway to maintain backward compatibility
+            logger.warning(f"Could not check generation limit: {str(e)}")
+            # For anonymous users, fail safely
+            if not user_id:
+                return jsonify({
+                    'success': False,
+                    'error': 'Unable to verify generation limits',
+                    'code': 'LIMIT_CHECK_FAILED',
+                    'message': 'Please try again or sign in to continue.'
+                }), 500
         
         # Get validated data from the decorator
         data = g.validated_data
@@ -88,6 +125,7 @@ def generate_book():
         generation_status[book_id] = {
             'book_id': book_id,
             'user_id': user_id,
+            'anonymous_user_id': anonymous_user_id,
             'title': title,
             'author': author,
             'book_type': book_type,
@@ -108,7 +146,8 @@ def generate_book():
         try:
             book_data = {
                 'id': book_id,
-                'user_id': user_id,
+                'user_id': user_id,  # Will be None for anonymous users
+                'anonymous_user_id': anonymous_user_id,  # Will be None for authenticated users
                 'title': title,
                 'author_name': author,
                 'genre': book_type,
@@ -118,7 +157,7 @@ def generate_book():
                 'created_at': format_for_database()
             }
             db_service.create_book(book_data)
-            logger.info(f"Created book record in database: {book_id}")
+            logger.info(f"Created book record in database: {book_id} for {'user ' + user_id if user_id else 'anonymous user ' + anonymous_user_id}")
         except DatabaseError as e:
             logger.error(f"Failed to create book record in database: {str(e)}")
             return jsonify({
@@ -128,27 +167,31 @@ def generate_book():
                 'message': str(e)
             }), 500
         
-        # Increment user's daily book count
+        # Increment book count
         try:
-            profile_service.increment_daily_book_count(user_id)
+            if user_id:
+                # Authenticated user - increment both daily and total counts
+                profile_service.increment_total_book_count(user_id)
+            # For anonymous users, the count is tracked by the database query itself
         except ProfileError as e:
-            logger.warning(f"Could not increment book count for user {user_id}: {str(e)}")
+            logger.warning(f"Could not increment book count: {str(e)}")
         
         # Start book generation in background thread
         thread = threading.Thread(
             target=_generate_book_async,
-            args=(book_id, user_id, title, author, book_type)
+            args=(book_id, user_id, anonymous_user_id, title, author, book_type)
         )
         thread.daemon = True
         thread.start()
         
-        logger.info(f"Started book generation for user {user_id}: '{title}' (book_id: {book_id})")
+        logger.info(f"Started book generation for {'user ' + user_id if user_id else 'anonymous user ' + anonymous_user_id}: '{title}' (book_id: {book_id})")
         
         return jsonify({
             'success': True,
             'book_id': book_id,
             'message': 'Book generation started successfully',
-            'status': 'pending'
+            'status': 'pending',
+            'user_type': 'authenticated' if user_id else 'anonymous'
         }), 202
         
     except Exception as e:
@@ -162,7 +205,7 @@ def generate_book():
 
 
 @api_bp.route('/book-status/<book_id>', methods=['GET'])
-@require_auth
+@optional_auth
 def get_book_status(book_id: str):
     """
     Get book generation status and progress.
@@ -176,12 +219,29 @@ def get_book_status(book_id: str):
     try:
         user_id = get_current_user_id()
         
+        # Get anonymous user ID from query params if user is not authenticated
+        anonymous_user_id = None
+        if not user_id:
+            anonymous_user_id = request.args.get('anonymous_user_id')
+            if not anonymous_user_id:
+                return jsonify({
+                    'success': False,
+                    'error': 'Anonymous user ID required for unauthenticated requests',
+                    'code': 'ANONYMOUS_ID_REQUIRED'
+                }), 400
+        
         # First check in-memory status (for active generations)
         if book_id in generation_status:
             status = generation_status[book_id]
             
             # Check if user owns this book
-            if status['user_id'] != user_id:
+            if user_id and status['user_id'] != user_id:
+                return jsonify({
+                    'success': False,
+                    'error': 'Access denied',
+                    'code': 'ACCESS_DENIED'
+                }), 403
+            elif anonymous_user_id and status['anonymous_user_id'] != anonymous_user_id:
                 return jsonify({
                     'success': False,
                     'error': 'Access denied',
@@ -213,7 +273,11 @@ def get_book_status(book_id: str):
         
         # If not in memory, check database for completed books
         try:
-            book_data = db_service.get_book(book_id, user_id)
+            book_data = db_service.get_book_by_id_and_owner(
+                book_id=book_id, 
+                user_id=user_id, 
+                anonymous_user_id=anonymous_user_id
+            )
             
             if book_data:
                 # Return book data from database
@@ -262,19 +326,21 @@ def get_book_status(book_id: str):
         }), 500
 
 
-def _generate_book_async(book_id: str, user_id: str, title: str, author: str, book_type: str):
+def _generate_book_async(book_id: str, user_id: str, anonymous_user_id: str, title: str, author: str, book_type: str):
     """
     Generate book asynchronously in background thread.
     
     Args:
         book_id: Unique book identifier
-        user_id: User ID
+        user_id: User ID (None for anonymous users)
+        anonymous_user_id: Anonymous user ID (None for authenticated users)
         title: Book title
         author: Author name
         book_type: Type of book (non-fiction)
     """
     try:
-        logger.info(f"Starting async book generation for '{title}' by {author} (book_id: {book_id})")
+        owner_description = f"user {user_id}" if user_id else f"anonymous user {anonymous_user_id}"
+        logger.info(f"Starting async book generation for '{title}' by {author} (book_id: {book_id}, owner: {owner_description})")
         
         # Step 1: Generate outline (20% progress)
         _update_generation_status(book_id, 'outline_generated', 10, "Generating book outline...")
@@ -332,19 +398,29 @@ def _generate_book_async(book_id: str, user_id: str, title: str, author: str, bo
         
         # Update database record with ALL file URLs
         try:
-            db_service.update_book_file_urls(
-                book_id=book_id,
-                user_id=user_id,
-                pdf_url=pdf_url,
-                epub_url=epub_url,
-                metadata_url=metadata_url
-            )
-            
-            # Also update status and progress
-            db_service.update_book(book_id, user_id, {
-                'status': 'completed',
-                'progress': 100
-            })
+            # Use the new method that handles both authenticated and anonymous users
+            if user_id:
+                db_service.update_book_file_urls(
+                    book_id=book_id,
+                    user_id=user_id,
+                    pdf_url=pdf_url,
+                    epub_url=epub_url,
+                    metadata_url=metadata_url
+                )
+                # Also update status and progress
+                db_service.update_book(book_id, user_id, {
+                    'status': 'completed',
+                    'progress': 100
+                })
+            else:
+                # For anonymous users, update using service_client
+                db_service.service_client.table('books').update({
+                    'status': 'completed',
+                    'progress': 100,
+                    'content_url': pdf_url,
+                    'epub_url': epub_url,
+                    'metadata_url': metadata_url
+                }).eq('id', book_id).eq('anonymous_user_id', anonymous_user_id).execute()
             
             logger.info(f"Updated book record with all file URLs in database: {book_id}")
         except DatabaseError as e:
@@ -370,11 +446,20 @@ def _generate_book_async(book_id: str, user_id: str, title: str, author: str, bo
         
         # Update database record with error
         try:
-            db_service.update_book(book_id, user_id, {
-                'status': 'failed',
-                'progress': 0,
-                'error_message': str(e)
-            })
+            if user_id:
+                db_service.update_book(book_id, user_id, {
+                    'status': 'failed',
+                    'progress': 0,
+                    'error_message': str(e)
+                })
+            else:
+                # For anonymous users, update using service_client
+                db_service.service_client.table('books').update({
+                    'status': 'failed',
+                    'progress': 0,
+                    'error_message': str(e)
+                }).eq('id', book_id).eq('anonymous_user_id', anonymous_user_id).execute()
+            
             logger.info(f"Updated book record with error in database: {book_id}")
         except DatabaseError as db_error:
             logger.error(f"Failed to update book record with error in database: {str(db_error)}")

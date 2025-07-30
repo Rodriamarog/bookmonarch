@@ -18,6 +18,7 @@ import {
   FileType,
   API_ENDPOINTS
 } from '../types/flask-api';
+import { getAnonymousUserIdForAPI } from '../anonymous-user';
 
 export class FlaskAPIError extends Error {
   public code: string;
@@ -204,27 +205,65 @@ export class FlaskAPIClient {
    * Generate a new book
    */
   async generateBook(request: GenerateBookRequest, options?: RequestOptions): Promise<GenerateBookResponse> {
-    const headers = await this.getAuthHeaders();
-    
-    return this.makeRequest<GenerateBookResponse>(API_ENDPOINTS.GENERATE_BOOK, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(request),
-      ...options
-    });
+    try {
+      // Try to get authenticated headers
+      const headers = await this.getAuthHeaders();
+      
+      return this.makeRequest<GenerateBookResponse>(API_ENDPOINTS.GENERATE_BOOK, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(request),
+        ...options
+      });
+    } catch (authError) {
+      // If authentication fails, try as anonymous user
+      if (authError instanceof FlaskAPIError && authError.code === 'AUTH_REQUIRED') {
+        const anonymousId = getAnonymousUserIdForAPI(false);
+        const requestWithAnonymousId = {
+          ...request,
+          anonymous_user_id: anonymousId
+        };
+        
+        return this.makeRequest<GenerateBookResponse>(API_ENDPOINTS.GENERATE_BOOK, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestWithAnonymousId),
+          ...options
+        });
+      }
+      
+      throw authError;
+    }
   }
 
   /**
    * Get book generation status
    */
   async getBookStatus(bookId: string, options?: RequestOptions): Promise<BookStatusResponse> {
-    const headers = await this.getAuthHeaders();
-    
-    return this.makeRequest<BookStatusResponse>(API_ENDPOINTS.BOOK_STATUS(bookId), {
-      method: 'GET',
-      headers,
-      ...options
-    });
+    try {
+      // Try to get authenticated headers
+      const headers = await this.getAuthHeaders();
+      
+      return this.makeRequest<BookStatusResponse>(API_ENDPOINTS.BOOK_STATUS(bookId), {
+        method: 'GET',
+        headers,
+        ...options
+      });
+    } catch (authError) {
+      // If authentication fails, try as anonymous user
+      if (authError instanceof FlaskAPIError && authError.code === 'AUTH_REQUIRED') {
+        const anonymousId = getAnonymousUserIdForAPI(false);
+        const url = `${API_ENDPOINTS.BOOK_STATUS(bookId)}?anonymous_user_id=${encodeURIComponent(anonymousId)}`;
+        
+        return this.makeRequest<BookStatusResponse>(url, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          ...options
+        });
+      }
+      
+      throw authError;
+    }
   }
 
   /**
@@ -300,6 +339,65 @@ export class FlaskAPIClient {
       return !!session?.access_token;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Generate book with automatic auth handling
+   */
+  async generateBookWithAutoAuth(request: GenerateBookRequest, options?: RequestOptions): Promise<GenerateBookResponse> {
+    const isAuth = await this.isAuthenticated();
+    
+    if (!isAuth) {
+      // Add anonymous user ID for non-authenticated requests
+      const anonymousId = getAnonymousUserIdForAPI(false);
+      const requestWithAnonymousId = {
+        ...request,
+        anonymous_user_id: anonymousId
+      };
+      
+      return this.makeRequest<GenerateBookResponse>(API_ENDPOINTS.GENERATE_BOOK, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestWithAnonymousId),
+        ...options
+      });
+    } else {
+      // Use authenticated request
+      const headers = await this.getAuthHeaders();
+      
+      return this.makeRequest<GenerateBookResponse>(API_ENDPOINTS.GENERATE_BOOK, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(request),
+        ...options
+      });
+    }
+  }
+
+  /**
+   * Get book status with automatic auth handling
+   */
+  async getBookStatusWithAutoAuth(bookId: string, options?: RequestOptions): Promise<BookStatusResponse> {
+    const isAuth = await this.isAuthenticated();
+    
+    if (!isAuth) {
+      const anonymousId = getAnonymousUserIdForAPI(false);
+      const url = `${API_ENDPOINTS.BOOK_STATUS(bookId)}?anonymous_user_id=${encodeURIComponent(anonymousId)}`;
+      
+      return this.makeRequest<BookStatusResponse>(url, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        ...options
+      });
+    } else {
+      const headers = await this.getAuthHeaders();
+      
+      return this.makeRequest<BookStatusResponse>(API_ENDPOINTS.BOOK_STATUS(bookId), {
+        method: 'GET',
+        headers,
+        ...options
+      });
     }
   }
 

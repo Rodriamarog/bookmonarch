@@ -37,7 +37,7 @@ export class BookGenerationService {
 
     try {
       // Start book generation
-      const generateResponse = await flaskAPI.generateBook(request, { signal });
+      const generateResponse = await flaskAPI.generateBookWithAutoAuth(request, { signal });
       const bookId = generateResponse.book_id;
 
       // Create abort controller for polling
@@ -103,7 +103,7 @@ export class BookGenerationService {
             throw new Error('Aborted');
           }
 
-          const status = await flaskAPI.getBookStatus(bookId, { signal });
+          const status = await flaskAPI.getBookStatusWithAutoAuth(bookId, { signal });
           
           // Call progress callback
           if (onProgress) {

@@ -11,9 +11,10 @@ import { Label } from '../ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Progress } from '../ui/progress';
 import { Alert, AlertDescription } from '../ui/alert';
-import { Loader2, BookOpen, Download, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { Loader2, BookOpen, Download, X, CheckCircle, AlertCircle, UserPlus } from 'lucide-react';
 import useBookGeneration from '../../hooks/useBookGeneration';
 import { flaskAPI } from '../../lib/api/flask-client';
+import { useAuth } from '../../hooks/useAuth';
 
 interface BookGenerationFormProps {
   onBookGenerated?: (bookId: string) => void;
@@ -24,6 +25,9 @@ export function BookGenerationForm({ onBookGenerated, className }: BookGeneratio
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+
+  const { user, signIn } = useAuth();
 
   const {
     isGenerating,
@@ -78,6 +82,12 @@ export function BookGenerationForm({ onBookGenerated, className }: BookGeneratio
   const handleDownloadFile = async (fileType: 'pdf' | 'epub' | 'metadata') => {
     if (!generatedBook?.book_id) return;
 
+    // If user is not authenticated, show login prompt
+    if (!user) {
+      setShowLoginPrompt(true);
+      return;
+    }
+
     try {
       const filesResponse = await flaskAPI.getBookFiles(generatedBook.book_id);
       const fileUrl = filesResponse.files[`${fileType}_url`];
@@ -93,6 +103,15 @@ export function BookGenerationForm({ onBookGenerated, className }: BookGeneratio
       }
     } catch (error) {
       console.error(`Error downloading ${fileType}:`, error);
+    }
+  };
+
+  const handleSignIn = async () => {
+    try {
+      await signIn();
+      setShowLoginPrompt(false);
+    } catch (error) {
+      console.error('Sign in failed:', error);
     }
   };
 
@@ -125,7 +144,7 @@ export function BookGenerationForm({ onBookGenerated, className }: BookGeneratio
                 className="flex items-center gap-2"
               >
                 <Download className="h-4 w-4" />
-                Download PDF
+                {user ? 'Download PDF' : 'Sign in to Download PDF'}
               </Button>
             )}
             {generatedBook.files?.epub_url && (
@@ -135,7 +154,7 @@ export function BookGenerationForm({ onBookGenerated, className }: BookGeneratio
                 className="flex items-center gap-2"
               >
                 <Download className="h-4 w-4" />
-                Download EPUB
+                {user ? 'Download EPUB' : 'Sign in to Download EPUB'}
               </Button>
             )}
             {generatedBook.files?.metadata_url && (
@@ -145,10 +164,23 @@ export function BookGenerationForm({ onBookGenerated, className }: BookGeneratio
                 className="flex items-center gap-2"
               >
                 <Download className="h-4 w-4" />
-                Download Metadata
+                {user ? 'Download Metadata' : 'Sign in to Download Metadata'}
               </Button>
             )}
           </div>
+          
+          {/* Anonymous user info after generation */}
+          {!user && (
+            <Alert>
+              <UserPlus className="h-4 w-4" />
+              <AlertDescription>
+                <p className="font-medium">Your book is ready!</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Sign in to download your files and keep your book saved to your account for future access.
+                </p>
+              </AlertDescription>
+            </Alert>
+          )}
           <Button onClick={handleReset} variant="ghost" className="w-full">
             Generate Another Book
           </Button>
@@ -242,6 +274,52 @@ export function BookGenerationForm({ onBookGenerated, className }: BookGeneratio
                 >
                   <X className="h-4 w-4" />
                 </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Login Prompt for Downloads */}
+          {showLoginPrompt && (
+            <Alert>
+              <UserPlus className="h-4 w-4" />
+              <AlertDescription className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Sign in to download your book</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Create a free account to download your generated book and access it anytime.
+                  </p>
+                </div>
+                <div className="flex gap-2 ml-4">
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    onClick={handleSignIn}
+                  >
+                    Sign In
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowLoginPrompt(false)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Anonymous User Info */}
+          {!user && !isGenerating && !generatedBook && (
+            <Alert>
+              <BookOpen className="h-4 w-4" />
+              <AlertDescription>
+                <p className="font-medium">Anonymous Book Generation</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  You can generate 1 book without signing up. To download files or generate more books, you'll need to create a free account.
+                </p>
               </AlertDescription>
             </Alert>
           )}

@@ -87,7 +87,9 @@ class DatabaseService:
             if 'created_at' not in book_data:
                 book_data['created_at'] = format_for_database()
             
-            result = self.client.table('books').insert(book_data).execute()
+            # Use service_client to bypass RLS policies for book creation
+            # This allows both authenticated and anonymous book creation
+            result = self.service_client.table('books').insert(book_data).execute()
             
             if not result.data:
                 raise DatabaseError("Failed to create book record")
@@ -226,6 +228,118 @@ class DatabaseService:
         except Exception as e:
             self.logger.error(f"Error getting user books for {user_id}: {str(e)}")
             raise DatabaseError(f"Failed to get user books: {str(e)}")
+    
+    def get_anonymous_books(self, anonymous_user_id: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Get all books for an anonymous user.
+        
+        Args:
+            anonymous_user_id: Anonymous user ID
+            limit: Optional limit on results
+            
+        Returns:
+            List: List of book records
+        """
+        try:
+            query = self.service_client.table('books').select('*').eq('anonymous_user_id', anonymous_user_id).is_('user_id', 'null').order('created_at', desc=True)
+            
+            if limit:
+                query = query.limit(limit)
+            
+            result = query.execute()
+            return result.data or []
+            
+        except Exception as e:
+            self.logger.error(f"Error getting anonymous books for {anonymous_user_id}: {str(e)}")
+            raise DatabaseError(f"Failed to get anonymous books: {str(e)}")
+    
+    def get_book_by_id_and_owner(self, book_id: str, user_id: str = None, anonymous_user_id: str = None) -> Optional[Dict[str, Any]]:
+        """
+        Get book record by ID and owner (either authenticated user or anonymous user).
+        
+        Args:
+            book_id: Book ID
+            user_id: User ID (for authenticated users)
+            anonymous_user_id: Anonymous user ID (for anonymous users)
+            
+        Returns:
+            Dict or None: Book record if found and owned by the user
+        """
+        try:
+            if user_id:
+                # Get authenticated user's book
+                result = self.client.table('books').select('*').eq('id', book_id).eq('user_id', user_id).execute()
+            elif anonymous_user_id:
+                # Get anonymous user's book
+                result = self.service_client.table('books').select('*').eq('id', book_id).eq('anonymous_user_id', anonymous_user_id).is_('user_id', 'null').execute()
+            else:
+                raise DatabaseError("Either user_id or anonymous_user_id must be provided")
+            
+            if result.data:
+                return result.data[0]
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error getting book {book_id}: {str(e)}")
+            raise DatabaseError(f"Failed to get book: {str(e)}")
+    
+    def link_anonymous_books_to_user(self, anonymous_user_id: str, user_id: str) -> int:
+        """
+        Link anonymous books to a user account when they sign up/login.
+        
+        Args:
+            anonymous_user_id: Anonymous user ID
+            user_id: Authenticated user ID
+            
+        Returns:
+            int: Number of books linked
+        """
+        try:
+            # Update anonymous books to be owned by the authenticated user
+            result = self.service_client.table('books').update({
+                'user_id': user_id,
+                'anonymous_user_id': None
+            }).eq('anonymous_user_id', anonymous_user_id).is_('user_id', 'null').execute()
+            
+            linked_count = len(result.data) if result.data else 0
+            
+            if linked_count > 0:
+                self.logger.info(f"Linked {linked_count} anonymous books to user {user_id}")
+                
+                # Update user's total book count
+                try:
+                    profile = self.get_profile(user_id)
+                    if profile:
+                        current_total = profile.get('total_books_generated', 0)
+                        self.update_profile(user_id, {
+                            'total_books_generated': current_total + linked_count
+                        })
+                except Exception as profile_error:
+                    self.logger.warning(f"Failed to update book count for user {user_id}: {str(profile_error)}")
+            
+            return linked_count
+            
+        except Exception as e:
+            self.logger.error(f"Error linking anonymous books for {anonymous_user_id} to user {user_id}: {str(e)}")
+            raise DatabaseError(f"Failed to link anonymous books: {str(e)}")
+    
+    def count_anonymous_books(self, anonymous_user_id: str) -> int:
+        """
+        Count books generated by an anonymous user.
+        
+        Args:
+            anonymous_user_id: Anonymous user ID
+            
+        Returns:
+            int: Number of books generated
+        """
+        try:
+            result = self.service_client.table('books').select('id', count='exact').eq('anonymous_user_id', anonymous_user_id).is_('user_id', 'null').execute()
+            return result.count if hasattr(result, 'count') else 0
+            
+        except Exception as e:
+            self.logger.error(f"Error counting anonymous books for {anonymous_user_id}: {str(e)}")
+            raise DatabaseError(f"Failed to count anonymous books: {str(e)}")
     
     # Profile table operations
     def create_profile(self, profile_data: Dict[str, Any]) -> Dict[str, Any]:

@@ -139,7 +139,17 @@ def _configure_third_party_loggers(base_level):
         'supabase': logging.INFO,
         'google': logging.WARNING,
         'reportlab': logging.WARNING,
-        'ebooklib': logging.WARNING
+        'ebooklib': logging.WARNING,
+        # HTTP client libraries that generate too much debug noise
+        'httpcore': logging.WARNING,
+        'httpx': logging.WARNING,
+        'hpack': logging.WARNING,
+        'h11': logging.WARNING,
+        'h2': logging.WARNING,
+        # Additional HTTP-related loggers
+        'charset_normalizer': logging.WARNING,
+        'urllib3.connectionpool': logging.WARNING,
+        'urllib3.util.retry': logging.WARNING
     }
     
     for logger_name, level in third_party_loggers.items():

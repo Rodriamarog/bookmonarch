@@ -187,44 +187,78 @@ class UserProfileService:
             self.logger.error(f"Error resetting book count for {user_id}: {str(e)}")
             raise ProfileError(f"Failed to reset book count: {str(e)}")
     
-    def check_generation_limit(self, user_id: str, daily_limit: int = 5) -> Dict[str, Any]:
+    def check_generation_limit(self, user_id: str = None, anonymous_user_id: str = None) -> Dict[str, Any]:
         """
-        Check if user has exceeded daily generation limit.
+        Check if user has exceeded generation limit (supports both authenticated and anonymous users).
         
         Args:
-            user_id: User ID
-            daily_limit: Daily generation limit (default: 5)
+            user_id: User ID (for authenticated users)
+            anonymous_user_id: Anonymous user ID (for anonymous users)
             
         Returns:
-            Dict: Contains 'allowed' boolean and 'remaining' count
+            Dict: Contains 'allowed' boolean, 'remaining' count, and limit info
         """
         try:
-            profile = self.get_profile(user_id)
-            if not profile:
-                raise ProfileError("Profile not found")
+            if user_id:
+                # Authenticated user - check profile-based limits
+                profile = self.get_profile(user_id)
+                if not profile:
+                    raise ProfileError("Profile not found")
+                
+                subscription_status = profile.get('subscription_status', 'free')
+                total_books = profile.get('total_books_generated', 0)
+                daily_books = profile.get('books_generated_today', 0)
+                
+                if subscription_status == 'free':
+                    # Free users: 1 book total lifetime
+                    allowed = total_books < 1
+                    remaining = max(0, 1 - total_books)
+                    limit_type = 'lifetime'
+                    limit_value = 1
+                elif subscription_status == 'pro':
+                    # Pro users: 10 books per day
+                    allowed = daily_books < 10
+                    remaining = max(0, 10 - daily_books)
+                    limit_type = 'daily'
+                    limit_value = 10
+                else:
+                    # Unknown subscription status
+                    allowed = False
+                    remaining = 0
+                    limit_type = 'none'
+                    limit_value = 0
+                
+                return {
+                    'allowed': allowed,
+                    'remaining': remaining,
+                    'limit_type': limit_type,
+                    'limit_value': limit_value,
+                    'current_count': total_books if limit_type == 'lifetime' else daily_books,
+                    'subscription_status': subscription_status,
+                    'user_type': 'authenticated'
+                }
+                
+            elif anonymous_user_id:
+                # Anonymous user - check anonymous book count
+                anonymous_book_count = self.db.count_anonymous_books(anonymous_user_id)
+                allowed = anonymous_book_count < 1
+                remaining = max(0, 1 - anonymous_book_count)
+                
+                return {
+                    'allowed': allowed,
+                    'remaining': remaining,
+                    'limit_type': 'lifetime',
+                    'limit_value': 1,
+                    'current_count': anonymous_book_count,
+                    'subscription_status': 'anonymous',
+                    'user_type': 'anonymous'
+                }
             
-            current_count = profile.get('books_generated_today', 0)
-            subscription_status = profile.get('subscription_status', 'free')
-            
-            # Premium users might have higher limits
-            if subscription_status == 'premium':
-                daily_limit = 50  # Higher limit for premium users
-            elif subscription_status == 'pro':
-                daily_limit = 100  # Highest limit for pro users
-            
-            remaining = max(0, daily_limit - current_count)
-            allowed = current_count < daily_limit
-            
-            return {
-                'allowed': allowed,
-                'remaining': remaining,
-                'current_count': current_count,
-                'daily_limit': daily_limit,
-                'subscription_status': subscription_status
-            }
+            else:
+                raise ProfileError("Either user_id or anonymous_user_id must be provided")
             
         except Exception as e:
-            self.logger.error(f"Error checking generation limit for {user_id}: {str(e)}")
+            self.logger.error(f"Error checking generation limit: {str(e)}")
             raise ProfileError(f"Failed to check generation limit: {str(e)}")
     
     def update_subscription_status(self, user_id: str, status: str, stripe_customer_id: str = None) -> Dict[str, Any]:
@@ -252,6 +286,83 @@ class UserProfileService:
         except Exception as e:
             self.logger.error(f"Error updating subscription for {user_id}: {str(e)}")
             raise ProfileError(f"Failed to update subscription: {str(e)}")
+    
+    def handle_user_login(self, user_id: str, user_email: str = None, user_metadata: Dict[str, Any] = None, anonymous_user_id: str = None) -> Dict[str, Any]:
+        """
+        Handle user login/signup, including linking anonymous books if applicable.
+        
+        Args:
+            user_id: User ID from authentication
+            user_email: User email (optional)
+            user_metadata: Additional user metadata (optional)
+            anonymous_user_id: Anonymous user ID to link books from (optional)
+            
+        Returns:
+            Dict: Contains profile info and linking results
+        """
+        try:
+            # Ensure profile exists
+            profile = self.ensure_profile_exists(user_id, user_email, user_metadata)
+            
+            linked_books = 0
+            
+            # Link anonymous books if anonymous_user_id provided
+            if anonymous_user_id:
+                try:
+                    linked_books = self.db.link_anonymous_books_to_user(anonymous_user_id, user_id)
+                    
+                    if linked_books > 0:
+                        # Update profile with new total book count
+                        current_total = profile.get('total_books_generated', 0)
+                        updated_profile = self.update_profile(user_id, {
+                            'total_books_generated': current_total + linked_books
+                        })
+                        profile = updated_profile
+                        
+                        self.logger.info(f"Linked {linked_books} anonymous books to user {user_id}")
+                    
+                except Exception as link_error:
+                    self.logger.warning(f"Failed to link anonymous books for user {user_id}: {str(link_error)}")
+            
+            return {
+                'profile': profile,
+                'linked_books': linked_books,
+                'success': True
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error handling user login for {user_id}: {str(e)}")
+            raise ProfileError(f"Failed to handle user login: {str(e)}")
+    
+    def increment_total_book_count(self, user_id: str) -> Dict[str, Any]:
+        """
+        Increment the total lifetime book count for a user.
+        
+        Args:
+            user_id: User ID
+            
+        Returns:
+            Dict: Updated profile record
+        """
+        try:
+            profile = self.get_profile(user_id)
+            if not profile:
+                raise ProfileError("Profile not found")
+            
+            current_total = profile.get('total_books_generated', 0)
+            current_daily = profile.get('books_generated_today', 0)
+            
+            updates = {
+                'total_books_generated': current_total + 1,
+                'books_generated_today': current_daily + 1,
+                'last_generation_date': format_for_database()[:10]  # YYYY-MM-DD format
+            }
+            
+            return self.update_profile(user_id, updates)
+            
+        except Exception as e:
+            self.logger.error(f"Error incrementing total book count for {user_id}: {str(e)}")
+            raise ProfileError(f"Failed to increment total book count: {str(e)}")
 
 
 # Global instance
