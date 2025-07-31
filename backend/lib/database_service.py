@@ -563,6 +563,221 @@ class DatabaseService:
             self.logger.error(f"Error updating profile for {user_id}: {str(e)}")
             raise DatabaseError(f"Failed to update profile: {str(e)}")
     
+    def create_profile_with_jwt(self, profile_data: Dict[str, Any], jwt_token: str) -> Dict[str, Any]:
+        """
+        Create user profile using JWT-authenticated client.
+        
+        This method is used to create profiles with proper RLS compliance
+        using the user's JWT token for authentication.
+        
+        Args:
+            profile_data: Profile data dictionary
+            jwt_token: JWT token for authentication
+            
+        Returns:
+            Dict: Created profile record
+            
+        Raises:
+            DatabaseError: If profile creation fails or JWT is invalid
+        """
+        try:
+            # Ensure created_at is properly formatted
+            if 'created_at' not in profile_data:
+                profile_data['created_at'] = format_for_database()
+            
+            # Set default values
+            profile_data.setdefault('subscription_status', 'free')
+            profile_data.setdefault('books_generated_today', 0)
+            profile_data.setdefault('total_books_generated', 0)
+            
+            # Create authenticated client using the JWT token
+            auth_client = self.get_authenticated_client(jwt_token)
+            
+            result = auth_client.table('profiles').insert(profile_data).execute()
+            
+            if not result.data:
+                raise DatabaseError("Failed to create profile")
+            
+            self.logger.info(f"Created profile with JWT authentication: {profile_data.get('id')}")
+            return result.data[0]
+            
+        except Exception as e:
+            error_msg = str(e).lower()
+            
+            # Check for common JWT/auth errors
+            if any(keyword in error_msg for keyword in ['token', 'jwt', 'expired', 'invalid', 'unauthorized', 'forbidden']):
+                self.logger.warning(f"JWT authentication failed for profile creation: {str(e)}")
+                raise DatabaseError(f"Authentication failed - JWT token may be expired or invalid: {str(e)}")
+            else:
+                self.logger.error(f"Error creating profile with JWT: {str(e)}")
+                raise DatabaseError(f"Failed to create profile with JWT: {str(e)}")
+    
+    def get_profile_with_jwt(self, user_id: str, jwt_token: str) -> Optional[Dict[str, Any]]:
+        """
+        Get user profile by ID using JWT-authenticated client.
+        
+        Args:
+            user_id: User ID
+            jwt_token: JWT token for authentication
+            
+        Returns:
+            Dict or None: Profile record if found
+            
+        Raises:
+            DatabaseError: If profile access fails or JWT is invalid
+        """
+        try:
+            # Create authenticated client using the JWT token
+            auth_client = self.get_authenticated_client(jwt_token)
+            
+            result = auth_client.table('profiles').select('*').eq('id', user_id).execute()
+            
+            if result.data:
+                self.logger.debug(f"Retrieved profile with JWT authentication: {user_id}")
+                return result.data[0]
+            return None
+            
+        except Exception as e:
+            error_msg = str(e).lower()
+            
+            # Check for common JWT/auth errors
+            if any(keyword in error_msg for keyword in ['token', 'jwt', 'expired', 'invalid', 'unauthorized', 'forbidden']):
+                self.logger.warning(f"JWT authentication failed for profile retrieval: {str(e)}")
+                raise DatabaseError(f"Authentication failed - JWT token may be expired or invalid: {str(e)}")
+            else:
+                self.logger.error(f"Error getting profile {user_id} with JWT: {str(e)}")
+                raise DatabaseError(f"Failed to get profile with JWT: {str(e)}")
+    
+    def update_profile_with_jwt(self, user_id: str, updates: Dict[str, Any], jwt_token: str) -> Dict[str, Any]:
+        """
+        Update user profile using JWT-authenticated client.
+        
+        Args:
+            user_id: User ID
+            updates: Fields to update
+            jwt_token: JWT token for authentication
+            
+        Returns:
+            Dict: Updated profile record
+            
+        Raises:
+            DatabaseError: If profile update fails or JWT is invalid
+        """
+        try:
+            # Add updated_at timestamp
+            updates['updated_at'] = format_for_database()
+            
+            # Create authenticated client using the JWT token
+            auth_client = self.get_authenticated_client(jwt_token)
+            
+            result = auth_client.table('profiles').update(updates).eq('id', user_id).execute()
+            
+            if not result.data:
+                raise DatabaseError("Profile not found or access denied")
+            
+            self.logger.info(f"Updated profile with JWT authentication: {user_id}")
+            return result.data[0]
+            
+        except Exception as e:
+            error_msg = str(e).lower()
+            
+            # Check for common JWT/auth errors
+            if any(keyword in error_msg for keyword in ['token', 'jwt', 'expired', 'invalid', 'unauthorized', 'forbidden']):
+                self.logger.warning(f"JWT authentication failed for profile update: {str(e)}")
+                raise DatabaseError(f"Authentication failed - JWT token may be expired or invalid: {str(e)}")
+            else:
+                self.logger.error(f"Error updating profile {user_id} with JWT: {str(e)}")
+                raise DatabaseError(f"Failed to update profile with JWT: {str(e)}")
+    
+    def create_profile_with_jwt_fallback(self, profile_data: Dict[str, Any], jwt_token: str) -> Dict[str, Any]:
+        """
+        Create user profile with JWT authentication and fallback to service client.
+        
+        This method tries JWT authentication first, and falls back to service_client
+        if JWT fails. Useful for profile creation where service_client may be needed
+        for initial setup but JWT is preferred.
+        
+        Args:
+            profile_data: Profile data dictionary
+            jwt_token: JWT token for authentication
+            
+        Returns:
+            Dict: Created profile record
+        """
+        try:
+            # Try JWT authentication first
+            return self.create_profile_with_jwt(profile_data, jwt_token)
+        except DatabaseError as jwt_error:
+            # If JWT fails due to authentication issues, try fallback
+            if "Authentication failed" in str(jwt_error):
+                self.logger.warning(f"JWT authentication failed for profile creation, attempting service_client fallback")
+                try:
+                    return self.create_profile(profile_data)
+                except DatabaseError as fallback_error:
+                    # If both fail, raise the original JWT error
+                    self.logger.error(f"Both JWT and service_client profile creation failed")
+                    raise jwt_error
+            else:
+                # Re-raise non-authentication errors
+                raise
+    
+    def get_profile_with_jwt_fallback(self, user_id: str, jwt_token: str) -> Optional[Dict[str, Any]]:
+        """
+        Get user profile with JWT authentication and fallback to service client.
+        
+        Args:
+            user_id: User ID
+            jwt_token: JWT token for authentication
+            
+        Returns:
+            Dict or None: Profile record if found
+        """
+        try:
+            # Try JWT authentication first
+            return self.get_profile_with_jwt(user_id, jwt_token)
+        except DatabaseError as jwt_error:
+            # If JWT fails due to authentication issues, try fallback
+            if "Authentication failed" in str(jwt_error):
+                self.logger.warning(f"JWT authentication failed for profile retrieval, attempting service_client fallback")
+                try:
+                    return self.get_profile(user_id)
+                except DatabaseError as fallback_error:
+                    # If both fail, raise the original JWT error
+                    self.logger.error(f"Both JWT and service_client profile retrieval failed")
+                    raise jwt_error
+            else:
+                # Re-raise non-authentication errors
+                raise
+    
+    def update_profile_with_jwt_fallback(self, user_id: str, updates: Dict[str, Any], jwt_token: str) -> Dict[str, Any]:
+        """
+        Update user profile with JWT authentication and fallback to service client.
+        
+        Args:
+            user_id: User ID
+            updates: Fields to update
+            jwt_token: JWT token for authentication
+            
+        Returns:
+            Dict: Updated profile record
+        """
+        try:
+            # Try JWT authentication first
+            return self.update_profile_with_jwt(user_id, updates, jwt_token)
+        except DatabaseError as jwt_error:
+            # If JWT fails due to authentication issues, try fallback
+            if "Authentication failed" in str(jwt_error):
+                self.logger.warning(f"JWT authentication failed for profile update, attempting service_client fallback")
+                try:
+                    return self.update_profile(user_id, updates)
+                except DatabaseError as fallback_error:
+                    # If both fail, raise the original JWT error
+                    self.logger.error(f"Both JWT and service_client profile update failed")
+                    raise jwt_error
+            else:
+                # Re-raise non-authentication errors
+                raise
+    
     # Billing events operations
     def create_billing_event(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
         """

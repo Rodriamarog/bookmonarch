@@ -86,7 +86,8 @@ def generate_book():
         try:
             limit_check = profile_service.check_generation_limit(
                 user_id=user_id, 
-                anonymous_user_id=anonymous_user_id
+                anonymous_user_id=anonymous_user_id,
+                jwt_token=jwt_token
             )
             
             if not limit_check['allowed']:
@@ -180,7 +181,7 @@ def generate_book():
         try:
             if user_id:
                 # Authenticated user - increment both daily and total counts
-                profile_service.increment_total_book_count(user_id)
+                profile_service.increment_total_book_count(user_id, jwt_token=jwt_token)
             # For anonymous users, the count is tracked by the database query itself
         except ProfileError as e:
             logger.warning(f"Could not increment book count: {str(e)}")

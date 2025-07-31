@@ -159,7 +159,8 @@ def require_auth(f):
                 profile_service.ensure_profile_exists(
                     user_id=g.user_id,
                     user_email=g.user_email,
-                    user_metadata=user_info.get('user_metadata', {})
+                    user_metadata=user_info.get('user_metadata', {}),
+                    jwt_token=token  # Pass JWT token for authenticated profile operations
                 )
             except Exception as profile_error:
                 # Log profile creation error but don't fail the request
@@ -227,7 +228,8 @@ def optional_auth(f):
                     profile_service.ensure_profile_exists(
                         user_id=g.user_id,
                         user_email=g.user_email,
-                        user_metadata=user_info.get('user_metadata', {})
+                        user_metadata=user_info.get('user_metadata', {}),
+                        jwt_token=token  # Pass JWT token for authenticated profile operations
                     )
                 except Exception as profile_error:
                     # Log profile creation error but don't fail the request

@@ -20,7 +20,7 @@ class UserProfileService:
         self.logger = logging.getLogger(__name__)
         self.db = get_database_service()
     
-    def ensure_profile_exists(self, user_id: str, user_email: str = None, user_metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    def ensure_profile_exists(self, user_id: str, user_email: str = None, user_metadata: Dict[str, Any] = None, jwt_token: str = None) -> Dict[str, Any]:
         """
         Ensure user profile exists, create if it doesn't.
         
@@ -31,6 +31,7 @@ class UserProfileService:
             user_id: User ID from authentication
             user_email: User email (optional)
             user_metadata: Additional user metadata (optional)
+            jwt_token: JWT token for authenticated database operations (optional)
             
         Returns:
             Dict: User profile record
@@ -40,7 +41,10 @@ class UserProfileService:
         """
         try:
             # First, try to get existing profile
-            profile = self.get_profile(user_id)
+            if jwt_token:
+                profile = self.get_profile_with_jwt(user_id, jwt_token)
+            else:
+                profile = self.get_profile(user_id)
             
             if profile:
                 self.logger.debug(f"Profile exists for user: {user_id}")
@@ -48,7 +52,10 @@ class UserProfileService:
             
             # Profile doesn't exist, create it
             self.logger.info(f"Creating new profile for user: {user_id}")
-            return self.create_profile(user_id, user_email, user_metadata)
+            if jwt_token:
+                return self.create_profile_with_jwt(user_id, user_email, user_metadata, jwt_token)
+            else:
+                return self.create_profile(user_id, user_email, user_metadata)
             
         except Exception as e:
             self.logger.error(f"Error ensuring profile exists for {user_id}: {str(e)}")
@@ -120,6 +127,88 @@ class UserProfileService:
             self.logger.error(f"Error getting profile for {user_id}: {str(e)}")
             raise ProfileError(f"Failed to get profile: {str(e)}")
     
+    def create_profile_with_jwt(self, user_id: str, user_email: str = None, user_metadata: Dict[str, Any] = None, jwt_token: str = None) -> Dict[str, Any]:
+        """
+        Create a new user profile using JWT authentication.
+        
+        Args:
+            user_id: User ID
+            user_email: User email (optional)
+            user_metadata: Additional metadata (optional)
+            jwt_token: JWT token for authentication (optional)
+            
+        Returns:
+            Dict: Created profile record
+        """
+        try:
+            # Extract full name from metadata or email
+            full_name = None
+            if user_metadata:
+                full_name = user_metadata.get('full_name') or user_metadata.get('name')
+            
+            if not full_name and user_email:
+                # Extract name from email if no full name available
+                full_name = user_email.split('@')[0].replace('.', ' ').replace('_', ' ').title()
+            
+            profile_data = {
+                'id': user_id,
+                'full_name': full_name,
+                'subscription_status': 'free',
+                'books_generated_today': 0,
+                'total_books_generated': 0
+            }
+            
+            # Add avatar URL if available in metadata
+            if user_metadata and user_metadata.get('avatar_url'):
+                profile_data['avatar_url'] = user_metadata['avatar_url']
+            
+            if jwt_token:
+                profile = self.db.create_profile_with_jwt_fallback(profile_data, jwt_token)
+            else:
+                profile = self.db.create_profile(profile_data)
+                
+            self.logger.info(f"Successfully created profile for user: {user_id}")
+            return profile
+            
+        except Exception as e:
+            self.logger.error(f"Error creating profile for {user_id}: {str(e)}")
+            raise ProfileError(f"Failed to create profile: {str(e)}")
+    
+    def get_profile_with_jwt(self, user_id: str, jwt_token: str) -> Optional[Dict[str, Any]]:
+        """
+        Get user profile by ID using JWT authentication.
+        
+        Args:
+            user_id: User ID
+            jwt_token: JWT token for authentication
+            
+        Returns:
+            Dict or None: Profile record if found
+        """
+        try:
+            return self.db.get_profile_with_jwt_fallback(user_id, jwt_token)
+        except Exception as e:
+            self.logger.error(f"Error getting profile for {user_id} with JWT: {str(e)}")
+            raise ProfileError(f"Failed to get profile: {str(e)}")
+    
+    def update_profile_with_jwt(self, user_id: str, updates: Dict[str, Any], jwt_token: str) -> Dict[str, Any]:
+        """
+        Update user profile using JWT authentication.
+        
+        Args:
+            user_id: User ID
+            updates: Fields to update
+            jwt_token: JWT token for authentication
+            
+        Returns:
+            Dict: Updated profile record
+        """
+        try:
+            return self.db.update_profile_with_jwt_fallback(user_id, updates, jwt_token)
+        except Exception as e:
+            self.logger.error(f"Error updating profile for {user_id} with JWT: {str(e)}")
+            raise ProfileError(f"Failed to update profile: {str(e)}")
+    
     def update_profile(self, user_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
         """
         Update user profile.
@@ -187,13 +276,14 @@ class UserProfileService:
             self.logger.error(f"Error resetting book count for {user_id}: {str(e)}")
             raise ProfileError(f"Failed to reset book count: {str(e)}")
     
-    def check_generation_limit(self, user_id: str = None, anonymous_user_id: str = None) -> Dict[str, Any]:
+    def check_generation_limit(self, user_id: str = None, anonymous_user_id: str = None, jwt_token: str = None) -> Dict[str, Any]:
         """
         Check if user has exceeded generation limit (supports both authenticated and anonymous users).
         
         Args:
             user_id: User ID (for authenticated users)
             anonymous_user_id: Anonymous user ID (for anonymous users)
+            jwt_token: JWT token for authentication (optional)
             
         Returns:
             Dict: Contains 'allowed' boolean, 'remaining' count, and limit info
@@ -201,7 +291,11 @@ class UserProfileService:
         try:
             if user_id:
                 # Authenticated user - check profile-based limits
-                profile = self.get_profile(user_id)
+                if jwt_token:
+                    profile = self.get_profile_with_jwt(user_id, jwt_token)
+                else:
+                    profile = self.get_profile(user_id)
+                    
                 if not profile:
                     raise ProfileError("Profile not found")
                 
@@ -334,18 +428,23 @@ class UserProfileService:
             self.logger.error(f"Error handling user login for {user_id}: {str(e)}")
             raise ProfileError(f"Failed to handle user login: {str(e)}")
     
-    def increment_total_book_count(self, user_id: str) -> Dict[str, Any]:
+    def increment_total_book_count(self, user_id: str, jwt_token: str = None) -> Dict[str, Any]:
         """
         Increment the total lifetime book count for a user.
         
         Args:
             user_id: User ID
+            jwt_token: JWT token for authentication (optional)
             
         Returns:
             Dict: Updated profile record
         """
         try:
-            profile = self.get_profile(user_id)
+            if jwt_token:
+                profile = self.get_profile_with_jwt(user_id, jwt_token)
+            else:
+                profile = self.get_profile(user_id)
+                
             if not profile:
                 raise ProfileError("Profile not found")
             
@@ -358,7 +457,10 @@ class UserProfileService:
                 'last_generation_date': format_for_database()[:10]  # YYYY-MM-DD format
             }
             
-            return self.update_profile(user_id, updates)
+            if jwt_token:
+                return self.update_profile_with_jwt(user_id, updates, jwt_token)
+            else:
+                return self.update_profile(user_id, updates)
             
         except Exception as e:
             self.logger.error(f"Error incrementing total book count for {user_id}: {str(e)}")
