@@ -12,7 +12,7 @@ export function generateAnonymousUserId(): string {
 }
 
 /**
- * Get or create an anonymous user ID
+ * Get or create an anonymous user ID (tab-specific to avoid conflicts)
  */
 export function getAnonymousUserId(): string {
   // Check if we're in a browser environment
@@ -21,19 +21,19 @@ export function getAnonymousUserId(): string {
   }
 
   try {
-    // Try to get existing ID from localStorage
-    let anonymousId = localStorage.getItem(ANONYMOUS_USER_ID_KEY);
+    // Use sessionStorage instead of localStorage for tab-specific IDs
+    let anonymousId = sessionStorage.getItem(ANONYMOUS_USER_ID_KEY);
     
     if (!anonymousId) {
-      // Generate new ID if none exists
+      // Generate new ID if none exists for this tab
       anonymousId = generateAnonymousUserId();
-      localStorage.setItem(ANONYMOUS_USER_ID_KEY, anonymousId);
+      sessionStorage.setItem(ANONYMOUS_USER_ID_KEY, anonymousId);
     }
     
     return anonymousId;
   } catch (error) {
-    // Fallback if localStorage is not available
-    console.warn('localStorage not available, using session-only anonymous ID');
+    // Fallback if sessionStorage is not available
+    console.warn('sessionStorage not available, using session-only anonymous ID');
     return generateAnonymousUserId();
   }
 }
@@ -47,9 +47,9 @@ export function clearAnonymousUserId(): void {
   }
 
   try {
-    localStorage.removeItem(ANONYMOUS_USER_ID_KEY);
+    sessionStorage.removeItem(ANONYMOUS_USER_ID_KEY);
   } catch (error) {
-    console.warn('Failed to clear anonymous user ID from localStorage');
+    console.warn('Failed to clear anonymous user ID from sessionStorage');
   }
 }
 
@@ -62,7 +62,7 @@ export function isAnonymousUser(): boolean {
   }
 
   try {
-    return localStorage.getItem(ANONYMOUS_USER_ID_KEY) !== null;
+    return sessionStorage.getItem(ANONYMOUS_USER_ID_KEY) !== null;
   } catch (error) {
     return true;
   }

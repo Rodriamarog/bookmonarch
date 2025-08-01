@@ -318,7 +318,7 @@ export function BookGenerationForm({ onBookGenerated, className }: BookGeneratio
               <AlertDescription>
                 <p className="font-medium">Anonymous Book Generation</p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  You can generate 1 book without signing up. To download files or generate more books, you'll need to create a free account.
+                  You can generate 1 book without signing up. To download files or generate more books, you&apos;ll need to create a free account.
                 </p>
               </AlertDescription>
             </Alert>
