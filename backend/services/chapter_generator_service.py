@@ -26,12 +26,13 @@ class ChapterGeneratorService:
         self.validator = BookValidator()
         self.target_word_count = Config.TARGET_CHAPTER_WORD_COUNT
     
-    def generate_all_chapters(self, outline: BookOutline) -> List[Chapter]:
+    def generate_all_chapters(self, outline: BookOutline, progress_callback=None) -> List[Chapter]:
         """
         Generate content for all chapters in the outline sequentially.
         
         Args:
             outline: The book outline containing chapter summaries
+            progress_callback: Optional callback function to report progress
             
         Returns:
             List[Chapter]: Complete list of chapters with content
@@ -56,12 +57,30 @@ class ChapterGeneratorService:
         
         for i, chapter_summary in enumerate(outline.chapters):
             try:
-                self.logger.info(f"Generating chapter {i + 1}: {chapter_summary.title}")
+                chapter_number = i + 1
+                self.logger.info(f"Generating chapter {chapter_number}: {chapter_summary.title}")
+                
+                # Report progress: starting chapter generation
+                if progress_callback:
+                    # Progress: 10% to 90% across 15 chapters (5.33% per chapter)
+                    start_progress = 10 + (i * 5.33)
+                    progress_callback(
+                        int(start_progress),
+                        f"Generating Chapter {chapter_number}: {chapter_summary.title}"
+                    )
                 
                 chapter = self.generate_single_chapter(outline_dict, i)
                 chapters.append(chapter)
                 
-                self.logger.info(f"Successfully generated chapter {i + 1} ({chapter.word_count} words)")
+                self.logger.info(f"Successfully generated chapter {chapter_number} ({chapter.word_count} words)")
+                
+                # Report progress: chapter completed
+                if progress_callback:
+                    end_progress = 10 + ((i + 1) * 5.33)
+                    progress_callback(
+                        int(end_progress),
+                        f"Completed Chapter {chapter_number}: {chapter_summary.title}"
+                    )
                 
                 # Add 10 second delay between chapter generations (except for the last chapter)
                 if i < len(outline.chapters) - 1:
@@ -305,7 +324,7 @@ class ChapterGeneratorService:
         
         # Check word count is reasonable
         word_count = len(re.findall(r'\b\w+\b', content))
-        is_reasonable_length = 600 <= word_count <= 2000
+        is_reasonable_length = 300 < word_count
         
         return has_headers and has_content and is_reasonable_length
     

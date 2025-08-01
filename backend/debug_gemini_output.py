@@ -12,7 +12,7 @@ load_dotenv()
 # Configure Gemini
 api_key = os.getenv('GEMINI_API_KEY')
 genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-2.0-flash-exp')
+model = genai.GenerativeModel('gemini-2.5-flash')
 
 # Simple test prompt for bullet points
 prompt = """Write a short section about keyword research with bullet points. Use markdown formatting with proper line breaks between bullet points.

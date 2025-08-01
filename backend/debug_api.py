@@ -26,7 +26,7 @@ def test_api_connection():
         genai.configure(api_key=api_key)
         
         # Test with a simple prompt
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         print("📡 Testing simple API call...")
         response = model.generate_content("Hello, please respond with 'API test successful'")
@@ -53,7 +53,7 @@ def test_outline_prompt():
     
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         # Use the same prompt as our service
         book_title = "Test Book"

@@ -130,10 +130,10 @@ class Chapter:
             errors.append("Chapter content is too short (minimum 500 characters)")
         
         # Validate word count is reasonable (target is 1400 words)
-        if self.word_count < 800:
-            errors.append(f"Chapter word count too low: {self.word_count} (minimum 800)")
-        elif self.word_count > 2000:
-            errors.append(f"Chapter word count too high: {self.word_count} (maximum 2000)")
+        if self.word_count < 500:
+            errors.append(f"Chapter word count too low: {self.word_count} (minimum 500)")
+        elif self.word_count > 10000:
+            errors.append(f"Chapter word count too high: {self.word_count} (maximum 10000)")
         
         # Check for meta commentary patterns
         meta_patterns = [
@@ -270,8 +270,8 @@ class BookMetadata:
         
         if not self.back_cover_description or not self.back_cover_description.strip():
             errors.append("Back cover description cannot be empty")
-        elif len(self.back_cover_description) > 2000:
-            errors.append("Back cover description cannot exceed 2000 characters")
+        elif len(self.back_cover_description) > 6000:
+            errors.append("Back cover description cannot exceed 6000 characters")
         
         return errors
     

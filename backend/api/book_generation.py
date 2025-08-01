@@ -10,7 +10,7 @@ from flask import request, jsonify, g
 from typing import Dict, Any
 
 from api import api_bp
-from lib.auth import require_auth, optional_auth, get_current_user_id, auth_service
+from lib.auth import require_auth, optional_auth, status_auth, get_current_user_id, auth_service
 from lib.validation import validate_book_generation_request
 from lib.database_service import get_database_service, DatabaseError
 from lib.user_profile_service import get_profile_service, ProfileError
@@ -186,10 +186,10 @@ def generate_book():
         except ProfileError as e:
             logger.warning(f"Could not increment book count: {str(e)}")
         
-        # Start book generation in background thread
+        # Start book generation in background thread (no JWT needed for background process)
         thread = threading.Thread(
             target=_generate_book_async,
-            args=(book_id, user_id, anonymous_user_id, title, author, book_type, jwt_token)
+            args=(book_id, user_id, anonymous_user_id, title, author, book_type)
         )
         thread.daemon = True
         thread.start()
@@ -215,7 +215,7 @@ def generate_book():
 
 
 @api_bp.route('/book-status/<book_id>', methods=['GET'])
-@optional_auth
+@status_auth
 def get_book_status(book_id: str):
     """
     Get book generation status and progress.
@@ -336,7 +336,7 @@ def get_book_status(book_id: str):
         }), 500
 
 
-def _generate_book_async(book_id: str, user_id: str, anonymous_user_id: str, title: str, author: str, book_type: str, jwt_token: str = None):
+def _generate_book_async(book_id: str, user_id: str, anonymous_user_id: str, title: str, author: str, book_type: str):
     """
     Generate book asynchronously in background thread.
     
@@ -347,21 +347,24 @@ def _generate_book_async(book_id: str, user_id: str, anonymous_user_id: str, tit
         title: Book title
         author: Author name
         book_type: Type of book (non-fiction)
-        jwt_token: JWT token for authenticated database operations (None for anonymous users)
     """
     try:
         owner_description = f"user {user_id}" if user_id else f"anonymous user {anonymous_user_id}"
         logger.info(f"Starting async book generation for '{title}' by {author} (book_id: {book_id}, owner: {owner_description})")
         
-        # Step 1: Generate outline (20% progress)
-        _update_generation_status(book_id, 'outline_generated', 10, "Generating book outline...", jwt_token)
+        # Step 1: Generate outline (10% progress)
+        _update_generation_status(book_id, 'outline_generated', 5, "Generating book outline...")
         outline = outline_service.generate_book_outline(title)
-        _update_generation_status(book_id, 'outline_generated', 20, "Outline generated successfully", jwt_token)
+        _update_generation_status(book_id, 'outline_generated', 10, "Outline generated successfully")
         
-        # Step 2: Generate chapters (60% progress)
-        _update_generation_status(book_id, 'generating_content', 25, "Generating chapters (this may take several minutes)...", jwt_token)
-        chapters = chapter_service.generate_all_chapters(outline)
-        _update_generation_status(book_id, 'generating_content', 60, "All chapters generated successfully", jwt_token)
+        # Step 2: Generate chapters (90% progress)
+        def chapter_progress_callback(progress, message):
+            """Callback to update chapter generation progress"""
+            _update_generation_status(book_id, 'generating_content', progress, message)
+        
+        _update_generation_status(book_id, 'generating_content', 10, "Starting chapter generation...")
+        chapters = chapter_service.generate_all_chapters(outline, progress_callback=chapter_progress_callback)
+        _update_generation_status(book_id, 'generating_content', 90, "All chapters generated successfully")
         
         # Step 3: Create book data
         book_data = BookData(
@@ -372,18 +375,18 @@ def _generate_book_async(book_id: str, user_id: str, anonymous_user_id: str, tit
             chapters=chapters
         )
         
-        # Step 4: Generate PDF (75% progress)
-        _update_generation_status(book_id, 'generating_content', 65, "Creating PDF file...", jwt_token)
+        # Step 4: Generate PDF (93% progress)
+        _update_generation_status(book_id, 'generating_content', 91, "Creating PDF file...")
         pdf_url = pdf_service.create_book_pdf(book_data, user_id, book_id)
-        _update_generation_status(book_id, 'generating_content', 75, "PDF created successfully", jwt_token)
+        _update_generation_status(book_id, 'generating_content', 93, "PDF created successfully")
         
-        # Step 5: Generate EPUB (85% progress)
-        _update_generation_status(book_id, 'generating_content', 80, "Creating EPUB file...", jwt_token)
+        # Step 5: Generate EPUB (96% progress)
+        _update_generation_status(book_id, 'generating_content', 94, "Creating EPUB file...")
         epub_url = epub_service.create_book_epub(book_data, user_id, book_id)
-        _update_generation_status(book_id, 'generating_content', 85, "EPUB created successfully", jwt_token)
+        _update_generation_status(book_id, 'generating_content', 96, "EPUB created successfully")
         
-        # Step 6: Generate metadata (95% progress)
-        _update_generation_status(book_id, 'generating_content', 90, "Generating marketing metadata...", jwt_token)
+        # Step 6: Generate metadata (99% progress)
+        _update_generation_status(book_id, 'generating_content', 97, "Generating marketing metadata...")
         content_summary = metadata_service.create_content_summary(book_data)
         metadata = metadata_service.generate_book_metadata(title, author, content_summary)
         
@@ -407,49 +410,19 @@ def _generate_book_async(book_id: str, user_id: str, anonymous_user_id: str, tit
         if book_id in generation_status:
             generation_status[book_id].update(final_status)
         
-        # Update database record with ALL file URLs
+        # Update database record with ALL file URLs using service client
         try:
-            if user_id and jwt_token:
-                # Authenticated user - use JWT-authenticated updates with fallback
-                db_service.update_book_file_urls_with_jwt_fallback(
-                    book_id=book_id,
-                    user_id=user_id,
-                    jwt_token=jwt_token,
-                    pdf_url=pdf_url,
-                    epub_url=epub_url,
-                    metadata_url=metadata_url
-                )
-                # Also update status and progress with JWT
-                db_service.update_book_with_jwt_fallback(book_id, user_id, {
-                    'status': 'completed',
-                    'progress': 100
-                }, jwt_token)
-                logger.info(f"Updated book record with JWT authentication: {book_id}")
-            elif user_id:
-                # Authenticated user but no JWT (fallback to regular method)
-                logger.warning(f"No JWT token available for user {user_id}, attempting regular update")
-                db_service.update_book_file_urls(
-                    book_id=book_id,
-                    user_id=user_id,
-                    pdf_url=pdf_url,
-                    epub_url=epub_url,
-                    metadata_url=metadata_url
-                )
-                db_service.update_book(book_id, user_id, {
-                    'status': 'completed',
-                    'progress': 100
-                })
-                logger.info(f"Updated book record with regular client: {book_id}")
-            else:
-                # Anonymous user - use service_client
-                db_service.service_client.table('books').update({
-                    'status': 'completed',
-                    'progress': 100,
-                    'content_url': pdf_url,
-                    'epub_url': epub_url,
-                    'metadata_url': metadata_url
-                }).eq('id', book_id).eq('anonymous_user_id', anonymous_user_id).execute()
-                logger.info(f"Updated anonymous book record with service client: {book_id}")
+            # Use service client for all background database operations
+            db_service.service_client.table('books').update({
+                'status': 'completed',
+                'progress': 100,
+                'pdf_url': pdf_url,
+                'epub_url': epub_url, 
+                'metadata_url': metadata_url,
+                'updated_at': format_for_database()
+            }).eq('id', book_id).execute()
+            
+            logger.info(f"Updated book record with file URLs: {book_id}")
             
         except DatabaseError as e:
             logger.error(f"Failed to update book record in database: {str(e)}")
@@ -472,48 +445,31 @@ def _generate_book_async(book_id: str, user_id: str, anonymous_user_id: str, tit
         if book_id in generation_status:
             generation_status[book_id].update(error_status)
         
-        # Update database record with error
+        # Update database record with error using service client
         try:
-            if user_id and jwt_token:
-                # Authenticated user - use JWT-authenticated update with fallback
-                db_service.update_book_with_jwt_fallback(book_id, user_id, {
-                    'status': 'failed',
-                    'progress': 0,
-                    'error_message': str(e)
-                }, jwt_token)
-                logger.info(f"Updated book record with error using JWT: {book_id}")
-            elif user_id:
-                # Authenticated user but no JWT (fallback)
-                logger.warning(f"No JWT token for error update, user {user_id}")
-                db_service.update_book(book_id, user_id, {
-                    'status': 'failed',
-                    'progress': 0,
-                    'error_message': str(e)
-                })
-                logger.info(f"Updated book record with error using regular client: {book_id}")
-            else:
-                # Anonymous user - use service_client
-                db_service.service_client.table('books').update({
-                    'status': 'failed',
-                    'progress': 0,
-                    'error_message': str(e)
-                }).eq('id', book_id).eq('anonymous_user_id', anonymous_user_id).execute()
-                logger.info(f"Updated anonymous book record with error: {book_id}")
+            # Use service client for all background database operations
+            db_service.service_client.table('books').update({
+                'status': 'failed',
+                'progress': 0,
+                'error_message': str(e),
+                'updated_at': format_for_database()
+            }).eq('id', book_id).execute()
+            
+            logger.info(f"Updated book record with error: {book_id}")
             
         except DatabaseError as db_error:
             logger.error(f"Failed to update book record with error in database: {str(db_error)}")
 
 
-def _update_generation_status(book_id: str, status: str, progress: int, current_step: str, jwt_token: str = None):
+def _update_generation_status(book_id: str, status: str, progress: int, current_step: str):
     """
-    Update generation status in memory and database.
+    Update generation status in memory and database using service-level access.
     
     Args:
         book_id: Book ID
         status: Current status
         progress: Progress percentage
         current_step: Current step description
-        jwt_token: JWT token for authenticated database operations (None for anonymous users)
     """
     # Update in-memory status
     if book_id in generation_status:
@@ -524,32 +480,18 @@ def _update_generation_status(book_id: str, status: str, progress: int, current_
             'updated_at': utc_now_iso()
         })
     
-    # Update database record
+    # Update database record using service client (bypasses RLS for background operations)
     try:
-        # Extract user_id from generation_status if available
-        user_id = generation_status[book_id]['user_id'] if book_id in generation_status else None
-        anonymous_user_id = generation_status[book_id]['anonymous_user_id'] if book_id in generation_status else None
+        # Use service client for all background database operations
+        # This bypasses RLS policies since the user was already validated when generation started
+        db_service.service_client.table('books').update({
+            'status': status,
+            'progress': progress,
+            'updated_at': format_for_database()
+        }).eq('id', book_id).execute()
         
-        if user_id and jwt_token:
-            # Authenticated user - use JWT-authenticated update with fallback
-            db_service.update_book_with_jwt_fallback(book_id, user_id, {
-                'status': status,
-                'progress': progress
-            }, jwt_token)
-        elif user_id:
-            # Authenticated user but no JWT (fallback)
-            logger.warning(f"No JWT token for status update, user {user_id}")
-            db_service.update_book(book_id, user_id, {
-                'status': status,
-                'progress': progress
-            })
-        elif anonymous_user_id:
-            # Anonymous user - use service_client
-            db_service.service_client.table('books').update({
-                'status': status,
-                'progress': progress
-            }).eq('id', book_id).eq('anonymous_user_id', anonymous_user_id).execute()
-    except DatabaseError as e:
+        logger.debug(f"Updated book {book_id} status: {status}, progress: {progress}%")
+    except Exception as e:
         logger.error(f"Failed to update book status in database: {str(e)}")
 
 
