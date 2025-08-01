@@ -15,7 +15,7 @@ export default function BooksPage() {
   if (!loading && !user) {
     return (
       <div className="min-h-screen" style={{ backgroundColor: "#FFFBF5" }}>
-        <NavigationMenu />
+        <NavigationMenu onSignInClick={() => setShowSignInModal(true)} />
         
         <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="text-center">

@@ -6,13 +6,21 @@ import { useAuthContext } from '@/contexts/AuthContext'
 import { useStripe } from '@/hooks/useStripe'
 import { Crown, CreditCard } from 'lucide-react'
 
-export function SubscriptionButton() {
+interface SubscriptionButtonProps {
+  onSignInClick?: () => void
+}
+
+export function SubscriptionButton({ onSignInClick }: SubscriptionButtonProps) {
   const { user, profile } = useAuthContext()
   const { loading, createCheckoutSession, openBillingPortal } = useStripe()
   const [error, setError] = useState('')
 
   const handleSubscribe = async () => {
     if (!user) {
+      if (onSignInClick) {
+        onSignInClick()
+        return
+      }
       setError('Please sign in to subscribe')
       return
     }

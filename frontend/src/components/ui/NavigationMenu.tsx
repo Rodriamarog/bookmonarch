@@ -7,7 +7,11 @@ import { Crown, User, Menu, X } from 'lucide-react'
 import { Button } from './Button'
 import { useAuthContext } from '@/contexts/AuthContext'
 
-export function NavigationMenu() {
+interface NavigationMenuProps {
+  onSignInClick?: () => void
+}
+
+export function NavigationMenu({ onSignInClick }: NavigationMenuProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const pathname = usePathname()
   const { user, profile, loading, signOut } = useAuthContext()
@@ -90,11 +94,13 @@ export function NavigationMenu() {
                 </Button>
               </>
             ) : (
-              <Link href="/">
-                <Button variant="secondary" size="sm">
-                  Sign In
-                </Button>
-              </Link>
+              <Button 
+                variant="secondary" 
+                size="sm"
+                onClick={() => onSignInClick?.()}
+              >
+                Sign In
+              </Button>
             )}
           </div>
 
@@ -171,11 +177,17 @@ export function NavigationMenu() {
                 </div>
               ) : (
                 <div className="px-3">
-                  <Link href="/" onClick={() => setIsMobileMenuOpen(false)}>
-                    <Button variant="secondary" size="sm" className="w-full">
-                      Sign In
-                    </Button>
-                  </Link>
+                  <Button 
+                    variant="secondary" 
+                    size="sm" 
+                    className="w-full"
+                    onClick={() => {
+                      onSignInClick?.()
+                      setIsMobileMenuOpen(false)
+                    }}
+                  >
+                    Sign In
+                  </Button>
                 </div>
               )}
             </div>

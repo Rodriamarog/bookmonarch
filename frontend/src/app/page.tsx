@@ -165,7 +165,7 @@ export default function BookMonarchDashboard() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#FFFBF5" }}>
-      <NavigationMenu />
+      <NavigationMenu onSignInClick={() => setShowSignInModal(true)} />
 
       {/* Notification */}
       {notification && (
@@ -335,7 +335,7 @@ export default function BookMonarchDashboard() {
 
               {/* Subscription Info */}
               <div className="text-center">
-                <SubscriptionButton />
+                <SubscriptionButton onSignInClick={() => setShowSignInModal(true)} />
               </div>
             </div>
           </Card>
